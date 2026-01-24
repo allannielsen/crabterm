@@ -1,8 +1,11 @@
+use chrono::Local;
 use mio::unix::SourceFd;
 use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
 use std::os::unix::io::AsRawFd;
 
+use super::filter::Filter;
+use crate::keybind::action::Action;
 use crate::keybind::{KeybindConfig, KeybindProcessor, KeybindResult};
 use crate::term::{disable_raw_mode, enable_raw_mode};
 use crate::traits::{IoInstance, IoResult};
@@ -11,6 +14,8 @@ pub struct Console {
     fd_in: SourceFd<'static>,
     keybind_processor: KeybindProcessor,
     pending_results: Vec<KeybindResult>,
+    active_filter: Filter,
+    at_line_start: bool,
 }
 
 impl Console {
@@ -26,14 +31,47 @@ impl Console {
             fd_in: SourceFd(fd_ref),
             keybind_processor: KeybindProcessor::new(keybind_config),
             pending_results: Vec::new(),
+            active_filter: Filter::default(),
+            at_line_start: true,
         })
     }
 
-    fn keybind_result_to_read_result(&self, result: KeybindResult) -> Option<IoResult> {
+    fn keybind_result_to_read_result(&mut self, result: KeybindResult) -> Option<IoResult> {
         match result {
             KeybindResult::Passthrough(bytes) => Some(IoResult::Data(bytes)),
+            KeybindResult::Action(Action::ToggleTimestamp) => {
+                self.active_filter = self.active_filter.toggle_timestamp();
+                None
+            }
             KeybindResult::Action(action) => Some(IoResult::Action(action)),
             KeybindResult::Consumed => None,
+        }
+    }
+
+    fn apply_timestamp_filter(&mut self, buf: &[u8]) -> Vec<u8> {
+        let mut output = Vec::new();
+        for &byte in buf {
+            if byte == b'\n' {
+                output.push(byte);
+                self.at_line_start = true;
+            } else if byte == b'\r' {
+                output.push(byte);
+            } else {
+                if self.at_line_start {
+                    let now = Local::now();
+                    write!(output, "{} ", now.format("%H:%M:%S%.3f")).unwrap();
+                    self.at_line_start = false;
+                }
+                output.push(byte);
+            }
+        }
+        output
+    }
+
+    fn apply_filter(&mut self, buf: &[u8]) -> Vec<u8> {
+        match self.active_filter {
+            Filter::None => buf.to_vec(),
+            Filter::Timestamp => self.apply_timestamp_filter(buf),
         }
     }
 }
@@ -116,8 +154,9 @@ impl IoInstance for Console {
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
-        match std::io::stdout().write(buf) {
-            Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
+        let filtered = self.apply_filter(buf);
+        match std::io::stdout().write_all(&filtered) {
+            Ok(()) => Ok(IoResult::Data(buf.to_vec())),
             Err(e) => Err(e),
         }
     }

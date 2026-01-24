@@ -32,6 +32,9 @@ impl Default for KeybindConfig {
         config
             .prefix_bindings
             .insert(KeyEvent::ctrl_char('a'), Action::Send(vec![0x01])); // Send literal Ctrl+A
+        config
+            .prefix_bindings
+            .insert(KeyEvent::char('t'), Action::ToggleTimestamp);
 
         config
     }
@@ -283,6 +286,7 @@ fn parse_action(parts: &mut LineParser) -> Result<Action, String> {
 
     match action_name {
         "quit" => Ok(Action::Quit),
+        "toggle-timestamp" => Ok(Action::ToggleTimestamp),
         "send" => {
             let string = parts
                 .next_quoted_string()
