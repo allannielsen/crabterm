@@ -272,9 +272,6 @@ mod tests {
         // Press unbound key
         let results = processor.process(b"x");
         // Should forward both prefix bytes and the key
-        assert_eq!(
-            results,
-            vec![KeybindResult::Passthrough(vec![0x01, b'x'])]
-        );
+        assert_eq!(results, vec![KeybindResult::Passthrough(vec![0x01, b'x'])]);
     }
 }

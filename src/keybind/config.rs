@@ -1,7 +1,8 @@
+use log::info;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use log::info;
+use std::path::PathBuf;
 
 use super::action::Action;
 use super::key::{Key, KeyEvent, Modifiers};
@@ -45,22 +46,25 @@ impl KeybindConfig {
         }
     }
 
-    pub fn load() -> Self {
-        if let Some(home) = dirs::home_dir() {
-            let config_path = home.join(".crabterm");
-            if config_path.exists() {
-                match KeybindConfig::load_from_file(&config_path) {
-                    Ok(config) => {
-                        info!("Loaded keybind config from {:?}", config_path);
-                        config
-                    }
-                    Err(e) => {
-                        println!("Warning: Failed to parse {}: {}", config_path.display(), e);
-                        KeybindConfig::default()
-                    }
+    pub fn load(path: Option<PathBuf>) -> Self {
+        let mut config_path = dirs::home_dir().map(|home| home.join(".crabterm"));
+
+        if path.is_some() {
+            config_path = path;
+        }
+
+        if let Some(p) = config_path
+            && p.exists()
+        {
+            match KeybindConfig::load_from_file(&p) {
+                Ok(config) => {
+                    info!("Loaded keybind config from {:?}", p);
+                    config
                 }
-            } else {
-                KeybindConfig::default()
+                Err(e) => {
+                    println!("Warning: Failed to parse {}: {}", p.display(), e);
+                    KeybindConfig::default()
+                }
             }
         } else {
             KeybindConfig::default()

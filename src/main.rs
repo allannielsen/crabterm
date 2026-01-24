@@ -71,6 +71,15 @@ fn main() -> std::io::Result<()> {
         .author("Allan W. Nielsen")
         .about("A terminal (uart) server and client")
         .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("CONFIG_PATH")
+                .help("Path to config file (default: ~/.crabterm)")
+                .value_parser(clap::value_parser!(PathBuf))
+                .num_args(1),
+        )
+        .arg(
             Arg::new("port")
                 .short('p')
                 .long("port")
@@ -188,7 +197,9 @@ fn main() -> std::io::Result<()> {
     let mut hub = IoHub::new(device, server)?;
 
     if !headless {
-        let console = Console::new(KeybindConfig::load())?;
+        let console = Console::new(KeybindConfig::load(
+            matches.get_one::<PathBuf>("config").cloned(),
+        ))?;
         hub.add(Box::new(console))?;
     }
 
