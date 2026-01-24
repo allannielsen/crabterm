@@ -1,4 +1,4 @@
-use crate::traits::IoInstance;
+use crate::traits::{IoInstance, IoResult};
 use log::{error, info};
 use mio::net::{TcpListener, TcpStream};
 use mio::{Interest, Poll, Token};
@@ -85,18 +85,17 @@ impl IoInstance for TcpClient {
         }
     }
 
-    fn read(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+    fn read(&mut self) -> Result<IoResult> {
         let mut tmp = [0u8; 1024];
 
         match self.stream.read(&mut tmp) {
-            Ok(n) => {
-                buf.extend_from_slice(&tmp[..n]);
-                Ok(n)
-            }
+            Ok(0) => Ok(IoResult::None),
+
+            Ok(n) => Ok(IoResult::Data(tmp[..n].to_vec())),
 
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                 // Not ready yet — ignore and wait for next event
-                Ok(0)
+                Ok(IoResult::None)
             }
 
             Err(e) => {
@@ -107,9 +106,9 @@ impl IoInstance for TcpClient {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
         match self.stream.write(buf) {
-            Ok(n) => Ok(n),
+            Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
             Err(e) => {
                 info!("TcpClient:{} Write error: {}", self.addr, e);
                 self.close();

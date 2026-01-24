@@ -3,16 +3,18 @@ use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
 use std::os::unix::io::AsRawFd;
 
+use crate::keybind::{KeybindConfig, KeybindProcessor, KeybindResult};
 use crate::term::{disable_raw_mode, enable_raw_mode};
-
-use crate::traits::IoInstance;
+use crate::traits::{IoInstance, IoResult};
 
 pub struct Console {
     fd_in: SourceFd<'static>,
+    keybind_processor: KeybindProcessor,
+    pending_results: Vec<KeybindResult>,
 }
 
 impl Console {
-    pub fn new() -> Result<Self> {
+    pub fn new(keybind_config: KeybindConfig) -> Result<Self> {
         // stdin is a global and its FD is valid for the entire program
         let fd = std::io::stdin().as_raw_fd();
 
@@ -22,7 +24,17 @@ impl Console {
 
         Ok(Console {
             fd_in: SourceFd(fd_ref),
+            keybind_processor: KeybindProcessor::new(keybind_config),
+            pending_results: Vec::new(),
         })
+    }
+
+    fn keybind_result_to_read_result(&self, result: KeybindResult) -> Option<IoResult> {
+        match result {
+            KeybindResult::Passthrough(bytes) => Some(IoResult::Data(bytes)),
+            KeybindResult::Action(action) => Some(IoResult::Action(action)),
+            KeybindResult::Consumed => None,
+        }
     }
 }
 
@@ -45,26 +57,69 @@ impl IoInstance for Console {
         let _ = poll.registry().deregister(&mut self.fd_in);
     }
 
-    fn read(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+    fn read(&mut self) -> Result<IoResult> {
+        // First, check if we have pending results from previous processing
+        if let Some(result) = self.pending_results.pop()
+            && let Some(read_result) = self.keybind_result_to_read_result(result)
+        {
+            return Ok(read_result);
+        }
+
         let mut tmp = [0u8; 1024];
 
         match std::io::stdin().read(&mut tmp) {
+            Ok(0) => Ok(IoResult::None),
+
             Ok(n) => {
-                buf.extend_from_slice(&tmp[..n]);
-                Ok(n)
+                // Process through keybind processor
+                let results = self.keybind_processor.process(&tmp[..n]);
+
+                // Store results in reverse order so we can pop from the end
+                for result in results.into_iter().rev() {
+                    self.pending_results.push(result);
+                }
+
+                // Return the first result
+                if let Some(result) = self.pending_results.pop()
+                    && let Some(read_result) = self.keybind_result_to_read_result(result)
+                {
+                    return Ok(read_result);
+                }
+
+                Ok(IoResult::None)
             }
 
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                 // Not ready yet — ignore and wait for next event
-                Ok(0)
+                Ok(IoResult::None)
             }
 
             Err(e) => Err(e),
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        std::io::stdout().write(buf)
+    fn tick(&mut self) -> Result<IoResult> {
+        // Check for timeout-triggered results (e.g., escape key timeout, prefix timeout)
+        let results = self.keybind_processor.tick();
+
+        for result in results.into_iter().rev() {
+            self.pending_results.push(result);
+        }
+
+        if let Some(result) = self.pending_results.pop()
+            && let Some(read_result) = self.keybind_result_to_read_result(result)
+        {
+            return Ok(read_result);
+        }
+
+        Ok(IoResult::None)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
+        match std::io::stdout().write(buf) {
+            Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
+            Err(e) => Err(e),
+        }
     }
 
     fn flush(&mut self) {

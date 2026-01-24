@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 mod hub;
 mod io;
+mod keybind;
 mod term;
 mod traits;
 
@@ -16,6 +17,7 @@ use io::Console;
 use io::SerialDevice;
 use io::TcpDevice;
 use io::TcpServer;
+use keybind::KeybindConfig;
 use term::disable_raw_mode;
 
 use crate::traits::IoInstance;
@@ -176,11 +178,37 @@ fn main() -> std::io::Result<()> {
         panic!("No device specified");
     };
 
+    // Load keybinding configuration
+    let keybind_config = if let Some(home) = dirs::home_dir() {
+        let config_path = home.join(".crabterm");
+        if config_path.exists() {
+            match KeybindConfig::load_from_file(&config_path) {
+                Ok(config) => {
+                    info!("Loaded keybind config from {:?}", config_path);
+                    config
+                }
+                Err(e) => {
+                    raw_println!("Warning: Failed to parse {}: {}", config_path.display(), e);
+                    KeybindConfig::default()
+                }
+            }
+        } else {
+            KeybindConfig::default()
+        }
+    } else {
+        KeybindConfig::default()
+    };
+
     let mut hub = IoHub::new(device, server)?;
-    let console = Console::new()?;
+    let console = Console::new(keybind_config)?;
     hub.add(Box::new(console))?;
 
     loop {
+        if hub.is_quit_requested() {
+            break;
+        }
         hub.run()?
     }
+
+    Ok(())
 }

@@ -3,7 +3,7 @@ use mio::{Interest, Poll, Token, net::TcpStream};
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::net::SocketAddr;
 
-use crate::traits::IoInstance;
+use crate::traits::{IoInstance, IoResult};
 
 pub struct TcpDevice {
     stream: Option<TcpStream>,
@@ -20,7 +20,7 @@ impl TcpDevice {
         })
     }
 
-    fn err_handle_zombie(&mut self, method: &'static str, err: Error) -> Result<usize> {
+    fn err_handle_zombie(&mut self, method: &'static str, err: Error) -> Result<IoResult> {
         info!("TCP-Device/{}: {} -> zombie", method, err);
         self.zombie = true;
         Err(err)
@@ -57,7 +57,7 @@ impl IoInstance for TcpDevice {
         self.stream = None;
     }
 
-    fn read(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+    fn read(&mut self) -> Result<IoResult> {
         let mut tmp = [0u8; 1024];
 
         if let Some(s) = &mut self.stream {
@@ -68,14 +68,11 @@ impl IoInstance for TcpDevice {
                     Err(Error::other("Disconnected".to_string()))
                 }
 
-                Ok(n) => {
-                    buf.extend_from_slice(&tmp[..n]);
-                    Ok(n)
-                }
+                Ok(n) => Ok(IoResult::Data(tmp[..n].to_vec())),
 
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                     // Not ready yet — ignore and wait for next event
-                    Ok(0)
+                    Ok(IoResult::None)
                 }
 
                 Err(e) => self.err_handle_zombie("read", e),
@@ -85,10 +82,10 @@ impl IoInstance for TcpDevice {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
         if let Some(s) = &mut self.stream {
             match s.write(buf) {
-                Ok(n) => Ok(n),
+                Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
 
                 Err(e) => self.err_handle_zombie("write", e),
             }

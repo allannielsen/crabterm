@@ -1,0 +1,15 @@
+# Crabterm configuration file
+# Copy to ~/.crabterm to customize keybindings
+#
+# Key syntax: Ctrl+a, Ctrl+Shift+x, Alt+F1, Escape, F1-F12, single chars
+# Actions: quit, send "string", send-bytes 0x1b 0x4f
+
+# Prefix key - press this first, then the action key
+prefix Ctrl+a
+
+# Direct bindings - no prefix needed
+map Ctrl+q quit
+
+# Prefix bindings - press prefix, then these keys
+map-prefix q send "\x11"      # Sends ctrl+q to device
+map-prefix Ctrl+a send "\x01" # Sends ctrl+a (prefix) to device

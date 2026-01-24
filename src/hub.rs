@@ -5,7 +5,8 @@ use std::io::Result;
 use std::time::{Duration, Instant};
 
 use crate::io::TcpServer;
-use crate::traits::{IoInstance, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER};
+use crate::keybind::Action;
+use crate::traits::{IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER};
 
 pub struct IoHub {
     poll: Poll,
@@ -16,6 +17,8 @@ pub struct IoHub {
     device: Box<dyn IoInstance>,
 
     server: Option<TcpServer>,
+
+    quit_requested: bool,
 }
 
 impl IoHub {
@@ -25,6 +28,7 @@ impl IoHub {
             instances: HashMap::new(),
             device,
             server,
+            quit_requested: false,
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -67,20 +71,47 @@ impl IoHub {
         }
     }
 
-    pub fn handle_event(&mut self, token_event: Token) -> Result<()> {
-        let mut buf = Vec::new();
+    fn handle_read_result(&mut self, result: IoResult) {
+        match result {
+            IoResult::Data(bytes) => {
+                // TODO, handle write error
+                self.device.write_all(&bytes);
+            }
+            IoResult::Action(action) => {
+                self.handle_action(action);
+            }
+            IoResult::None => {}
+        }
+    }
 
+    fn handle_action(&mut self, action: Action) {
+        match action {
+            Action::Quit => {
+                self.quit_requested = true;
+            }
+            Action::Send(bytes) => {
+                // TODO, handle write error
+                self.device.write_all(&bytes);
+            }
+        }
+    }
+
+    pub fn handle_event(&mut self, token_event: Token) -> Result<()> {
         trace!("handle_event");
 
         if token_event == TOKEN_DEV {
-            match self.device.read(&mut buf) {
-                Ok(0) => {}
-
-                Ok(_) => {
+            match self.device.read() {
+                Ok(IoResult::Data(buf)) => {
                     // Broadcast to all clients
                     for (_, client) in self.instances.iter_mut() {
                         client.write_all(&buf);
                     }
+                }
+
+                Ok(IoResult::None) => {}
+
+                Ok(IoResult::Action(_)) => {
+                    // Device shouldn't return actions, ignore
                 }
 
                 Err(e) => {
@@ -99,15 +130,8 @@ impl IoHub {
             }
         } else if let Some(client) = self.instances.get_mut(&token_event) {
             // NOTICE: The 'console' is also a client
-            match client.read(&mut buf) {
-                Ok(0) => {}
-
-                Ok(_) => {
-                    // TODO, handle write error
-                    self.device.write_all(&buf);
-                }
-
-                Err(_) => {}
+            if let Ok(result) = client.read() {
+                self.handle_read_result(result);
             }
         } else {
             panic!("Unexpected token became ready: {}", token_event.0);
@@ -130,6 +154,10 @@ impl IoHub {
         }
 
         Ok(())
+    }
+
+    pub fn is_quit_requested(&self) -> bool {
+        self.quit_requested
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
@@ -175,6 +203,21 @@ impl IoHub {
 
             for event in events.iter() {
                 self.handle_event(event.token())?;
+            }
+
+            // Process timeouts for all instances (e.g., keybind timeouts in Console)
+            let results: Vec<_> = self
+                .instances
+                .values_mut()
+                .filter_map(|c| c.tick().ok())
+                .collect();
+            for result in results {
+                self.handle_read_result(result);
+            }
+
+            // Check if quit was requested
+            if self.quit_requested {
+                return Ok(());
             }
 
             let now = Instant::now();

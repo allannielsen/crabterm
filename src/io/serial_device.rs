@@ -4,7 +4,7 @@ use mio_serial::{SerialPortBuilderExt, SerialStream};
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::time::{Duration, Instant};
 
-use crate::traits::IoInstance;
+use crate::traits::{IoInstance, IoResult};
 
 pub struct Connection {
     stream: SerialStream,
@@ -31,7 +31,7 @@ impl SerialDevice {
         })
     }
 
-    fn err_handle_zombie(&mut self, method: &'static str, err: Error) -> Result<usize> {
+    fn err_handle_zombie(&mut self, method: &'static str, err: Error) -> Result<IoResult> {
         info!("UART-Device/{}: {} -> zombie", method, err);
         self.zombie = true;
         Err(err)
@@ -79,7 +79,7 @@ impl IoInstance for SerialDevice {
         self.connection = None;
     }
 
-    fn read(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+    fn read(&mut self) -> Result<IoResult> {
         let mut tmp = [0u8; 1024];
 
         if let Some(c) = &mut self.connection {
@@ -100,16 +100,15 @@ impl IoInstance for SerialDevice {
 
                     if c.quarantine {
                         info!("Skipping {} bytes due to quarantine", n);
-                        Ok(0)
+                        Ok(IoResult::None)
                     } else {
-                        buf.extend_from_slice(&tmp[..n]);
-                        Ok(n)
+                        Ok(IoResult::Data(tmp[..n].to_vec()))
                     }
                 }
 
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                     // Not ready yet — ignore and wait for next event
-                    Ok(0)
+                    Ok(IoResult::None)
                 }
 
                 Err(e) => self.err_handle_zombie("read", e),
@@ -119,10 +118,10 @@ impl IoInstance for SerialDevice {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
         if let Some(c) = &mut self.connection {
             match c.stream.write(buf) {
-                Ok(n) => Ok(n),
+                Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
 
                 Err(e) => self.err_handle_zombie("write", e),
             }
