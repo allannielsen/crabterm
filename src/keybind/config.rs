@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use log::info;
 
 use super::action::Action;
 use super::key::{Key, KeyEvent, Modifiers};
@@ -41,6 +42,28 @@ impl KeybindConfig {
             prefix: None,
             prefix_bindings: HashMap::new(),
             direct_bindings: HashMap::new(),
+        }
+    }
+
+    pub fn load() -> Self {
+        if let Some(home) = dirs::home_dir() {
+            let config_path = home.join(".crabterm");
+            if config_path.exists() {
+                match KeybindConfig::load_from_file(&config_path) {
+                    Ok(config) => {
+                        info!("Loaded keybind config from {:?}", config_path);
+                        config
+                    }
+                    Err(e) => {
+                        println!("Warning: Failed to parse {}: {}", config_path.display(), e);
+                        KeybindConfig::default()
+                    }
+                }
+            } else {
+                KeybindConfig::default()
+            }
+        } else {
+            KeybindConfig::default()
         }
     }
 

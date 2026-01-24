@@ -188,28 +188,7 @@ fn main() -> std::io::Result<()> {
     let mut hub = IoHub::new(device, server)?;
 
     if !headless {
-        // Load keybinding configuration
-        let keybind_config = if let Some(home) = dirs::home_dir() {
-            let config_path = home.join(".crabterm");
-            if config_path.exists() {
-                match KeybindConfig::load_from_file(&config_path) {
-                    Ok(config) => {
-                        info!("Loaded keybind config from {:?}", config_path);
-                        config
-                    }
-                    Err(e) => {
-                        raw_println!("Warning: Failed to parse {}: {}", config_path.display(), e);
-                        KeybindConfig::default()
-                    }
-                }
-            } else {
-                KeybindConfig::default()
-            }
-        } else {
-            KeybindConfig::default()
-        };
-
-        let console = Console::new(keybind_config)?;
+        let console = Console::new(KeybindConfig::load())?;
         hub.add(Box::new(console))?;
     }
 
