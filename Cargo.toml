@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.48", features = ["wrap_help"]}
+mio = { version = "1.0", features = ["os-ext", "net"] }
+log = "0.4"
+flexi_logger = "0.31"
+termios = "0.3.3"
+mio-serial = "5.0.6"
