@@ -178,30 +178,40 @@ fn main() -> std::io::Result<()> {
         panic!("No device specified");
     };
 
-    // Load keybinding configuration
-    let keybind_config = if let Some(home) = dirs::home_dir() {
-        let config_path = home.join(".crabterm");
-        if config_path.exists() {
-            match KeybindConfig::load_from_file(&config_path) {
-                Ok(config) => {
-                    info!("Loaded keybind config from {:?}", config_path);
-                    config
+    let headless = matches.get_flag("headless");
+
+    if headless && server.is_none() {
+        raw_println!("Error: --headless requires -p/--port option");
+        std::process::exit(1);
+    }
+
+    let mut hub = IoHub::new(device, server)?;
+
+    if !headless {
+        // Load keybinding configuration
+        let keybind_config = if let Some(home) = dirs::home_dir() {
+            let config_path = home.join(".crabterm");
+            if config_path.exists() {
+                match KeybindConfig::load_from_file(&config_path) {
+                    Ok(config) => {
+                        info!("Loaded keybind config from {:?}", config_path);
+                        config
+                    }
+                    Err(e) => {
+                        raw_println!("Warning: Failed to parse {}: {}", config_path.display(), e);
+                        KeybindConfig::default()
+                    }
                 }
-                Err(e) => {
-                    raw_println!("Warning: Failed to parse {}: {}", config_path.display(), e);
-                    KeybindConfig::default()
-                }
+            } else {
+                KeybindConfig::default()
             }
         } else {
             KeybindConfig::default()
-        }
-    } else {
-        KeybindConfig::default()
-    };
+        };
 
-    let mut hub = IoHub::new(device, server)?;
-    let console = Console::new(keybind_config)?;
-    hub.add(Box::new(console))?;
+        let console = Console::new(keybind_config)?;
+        hub.add(Box::new(console))?;
+    }
 
     loop {
         if hub.is_quit_requested() {
