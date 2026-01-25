@@ -1,21 +1,40 @@
+use std::collections::HashMap;
 use std::io::Write;
+use std::time::Instant;
 
 use chrono::Local;
 
 use super::IoFilter;
 
 pub const NAME: &str = "timestamp";
+pub const SETTING_ABS: &str = "timestamp-abs";
+pub const SETTING_REL: &str = "timestamp-rel";
 
 pub struct TimestampFilter {
     enabled: bool,
+    show_abs: bool,
+    show_rel: bool,
     at_line_start: bool,
+    last_output: Option<Instant>,
 }
 
 impl TimestampFilter {
     pub fn new() -> Self {
         TimestampFilter {
             enabled: false,
+            show_abs: true,
+            show_rel: false,
             at_line_start: true,
+            last_output: None,
+        }
+    }
+
+    pub fn configure(&mut self, settings: &HashMap<String, bool>) {
+        if let Some(&value) = settings.get(SETTING_ABS) {
+            self.show_abs = value;
+        }
+        if let Some(&value) = settings.get(SETTING_REL) {
+            self.show_rel = value;
         }
     }
 }
@@ -45,8 +64,18 @@ impl IoFilter for TimestampFilter {
                 output.push(byte);
             } else {
                 if self.at_line_start {
-                    let now = Local::now();
-                    write!(output, "{} ", now.format("%H:%M:%S%.3f")).unwrap();
+                    if self.show_abs {
+                        let now = Local::now();
+                        write!(output, "{} ", now.format("%H:%M:%S%.3f")).unwrap();
+                    }
+                    if self.show_rel {
+                        let elapsed = self
+                            .last_output
+                            .map(|t| t.elapsed())
+                            .unwrap_or_default();
+                        write!(output, "+{:>6.3} ", elapsed.as_secs_f64()).unwrap();
+                    }
+                    self.last_output = Some(Instant::now());
                     self.at_line_start = false;
                 }
                 output.push(byte);

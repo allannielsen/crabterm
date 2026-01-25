@@ -1,5 +1,7 @@
 pub mod timestamp;
 
+use std::collections::HashMap;
+
 pub use timestamp::TimestampFilter;
 
 /// Trait for filters that transform output data
@@ -22,10 +24,11 @@ pub struct FilterChain {
 }
 
 impl FilterChain {
-    pub fn new() -> Self {
-        FilterChain {
-            timestamp_filter: TimestampFilter::new(),
-        }
+    pub fn new(settings: &HashMap<String, bool>) -> Self {
+        let mut timestamp_filter = TimestampFilter::new();
+        timestamp_filter.configure(settings);
+
+        FilterChain { timestamp_filter }
     }
 
     /// Toggle a filter by name. Returns true if the filter exists.
@@ -53,6 +56,6 @@ impl FilterChain {
 
 impl Default for FilterChain {
     fn default() -> Self {
-        Self::new()
+        Self::new(&HashMap::new())
     }
 }

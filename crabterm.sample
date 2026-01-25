@@ -14,3 +14,8 @@ map Ctrl+q quit
 map-prefix q send "\x11"      # Sends ctrl+q to device
 map-prefix Ctrl+a send "\x01" # Sends ctrl+a (prefix) to device
 map-prefix t filter-toggle timestamp # Toggle timestamp filter on output
+
+# Configure the timestamp filter (notice, filter must be enabled to have any
+# effect)
+set timestamp-abs on  # show time-of-day time-stamp
+set timestamp-rel off # show time since last line

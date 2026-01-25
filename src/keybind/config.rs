@@ -12,6 +12,7 @@ pub struct KeybindConfig {
     pub prefix: Option<KeyEvent>,
     pub prefix_bindings: HashMap<KeyEvent, Action>,
     pub direct_bindings: HashMap<KeyEvent, Action>,
+    pub settings: HashMap<String, bool>,
 }
 
 impl Default for KeybindConfig {
@@ -20,6 +21,7 @@ impl Default for KeybindConfig {
             prefix: Some(KeyEvent::ctrl_char('a')),
             prefix_bindings: HashMap::new(),
             direct_bindings: HashMap::new(),
+            settings: HashMap::new(),
         };
 
         // Default bindings
@@ -46,6 +48,7 @@ impl KeybindConfig {
             prefix: None,
             prefix_bindings: HashMap::new(),
             direct_bindings: HashMap::new(),
+            settings: HashMap::new(),
         }
     }
 
@@ -119,6 +122,16 @@ impl KeybindConfig {
                 let key = parse_key_event(key_str)?;
                 let action = parse_action(&mut parts)?;
                 self.direct_bindings.insert(key, action);
+            }
+            "set" => {
+                let name = parts.next_word().ok_or("Missing setting name")?;
+                let value_str = parts.next_word().ok_or("Missing setting value (on/off)")?;
+                let value = match value_str.to_lowercase().as_str() {
+                    "on" | "true" | "yes" | "1" => true,
+                    "off" | "false" | "no" | "0" => false,
+                    _ => return Err(format!("Invalid boolean value: {}", value_str)),
+                };
+                self.settings.insert(name.to_string(), value);
             }
             _ => return Err(format!("Unknown directive: {}", directive)),
         }

@@ -202,11 +202,9 @@ fn main() -> std::io::Result<()> {
     let mut hub = IoHub::new(device, server)?;
 
     if !headless {
-        let filter_chain = FilterChain::new();
-        let console = Console::new(
-            KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned()),
-            filter_chain,
-        )?;
+        let config = KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned());
+        let filter_chain = FilterChain::new(&config.settings);
+        let console = Console::new(config, filter_chain)?;
         hub.add(Box::new(console))?;
     }
 
