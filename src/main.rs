@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 mod hub;
 mod io;
+mod iofilter;
 mod keybind;
 mod term;
 mod traits;

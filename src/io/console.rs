@@ -1,10 +1,9 @@
-use chrono::Local;
 use mio::unix::SourceFd;
 use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
 use std::os::unix::io::AsRawFd;
 
-use super::filter::Filter;
+use crate::iofilter::{IoFilter, TimestampFilter};
 use crate::keybind::action::Action;
 use crate::keybind::{KeybindConfig, KeybindProcessor, KeybindResult};
 use crate::term::{disable_raw_mode, enable_raw_mode};
@@ -14,8 +13,7 @@ pub struct Console {
     fd_in: SourceFd<'static>,
     keybind_processor: KeybindProcessor,
     pending_results: Vec<KeybindResult>,
-    active_filter: Filter,
-    at_line_start: bool,
+    timestamp_filter: Option<TimestampFilter>,
 }
 
 impl Console {
@@ -31,8 +29,7 @@ impl Console {
             fd_in: SourceFd(fd_ref),
             keybind_processor: KeybindProcessor::new(keybind_config),
             pending_results: Vec::new(),
-            active_filter: Filter::default(),
-            at_line_start: true,
+            timestamp_filter: None,
         })
     }
 
@@ -40,7 +37,10 @@ impl Console {
         match result {
             KeybindResult::Passthrough(bytes) => Some(IoResult::Data(bytes)),
             KeybindResult::Action(Action::ToggleTimestamp) => {
-                self.active_filter = self.active_filter.toggle_timestamp();
+                self.timestamp_filter = match self.timestamp_filter.take() {
+                    Some(_) => None,
+                    None => Some(TimestampFilter::new()),
+                };
                 None
             }
             KeybindResult::Action(action) => Some(IoResult::Action(action)),
@@ -48,30 +48,10 @@ impl Console {
         }
     }
 
-    fn apply_timestamp_filter(&mut self, buf: &[u8]) -> Vec<u8> {
-        let mut output = Vec::new();
-        for &byte in buf {
-            if byte == b'\n' {
-                output.push(byte);
-                self.at_line_start = true;
-            } else if byte == b'\r' {
-                output.push(byte);
-            } else {
-                if self.at_line_start {
-                    let now = Local::now();
-                    write!(output, "{} ", now.format("%H:%M:%S%.3f")).unwrap();
-                    self.at_line_start = false;
-                }
-                output.push(byte);
-            }
-        }
-        output
-    }
-
     fn apply_filter(&mut self, buf: &[u8]) -> Vec<u8> {
-        match self.active_filter {
-            Filter::None => buf.to_vec(),
-            Filter::Timestamp => self.apply_timestamp_filter(buf),
+        match &mut self.timestamp_filter {
+            Some(filter) => filter.filter_out(buf),
+            None => buf.to_vec(),
         }
     }
 }

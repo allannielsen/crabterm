@@ -1,6 +1,5 @@
 pub mod console;
 pub mod echo_device;
-pub mod filter;
 pub mod serial_device;
 pub mod tcp_device;
 pub mod tcp_server;
