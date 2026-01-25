@@ -23,6 +23,8 @@ use term::disable_raw_mode;
 
 use crate::traits::IoInstance;
 
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_SHA"), ")");
+
 macro_rules! raw_println {
     ($($arg:tt)*) => {
         print!("{}\r\n", format!($($arg)*));
@@ -68,7 +70,7 @@ fn main() -> std::io::Result<()> {
 
     let dev_help = "Device - /dev/rs232-device|(ip-address|hostname):port|echo";
     let matches = Command::new("crabterm")
-        .version("0.1.0")
+        .version(VERSION)
         .author("Allan W. Nielsen")
         .about("A terminal (uart) server and client")
         .arg(
