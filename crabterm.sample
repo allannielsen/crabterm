@@ -2,7 +2,7 @@
 # Copy to ~/.crabterm to customize keybindings
 #
 # Key syntax: Ctrl+a, Ctrl+Shift+x, Alt+F1, Escape, F1-F12, single chars
-# Actions: quit, send "string", send-bytes 0x1b 0x4f, toggle-timestamp
+# Actions: quit, send "string", send-bytes 0x1b 0x4f, filter-toggle <name>
 
 # Prefix key - press this first, then the action key
 prefix Ctrl+a
@@ -13,4 +13,4 @@ map Ctrl+q quit
 # Prefix bindings - press prefix, then these keys
 map-prefix q send "\x11"      # Sends ctrl+q to device
 map-prefix Ctrl+a send "\x01" # Sends ctrl+a (prefix) to device
-map-prefix t toggle-timestamp # Toggle timestamp prefix on output
+map-prefix t filter-toggle timestamp # Toggle timestamp filter on output

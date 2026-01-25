@@ -93,7 +93,7 @@ impl IoHub {
                 // TODO, handle write error
                 self.device.write_all(&bytes);
             }
-            Action::ToggleTimestamp => {
+            Action::FilterToggle(_) => {
                 // Handled locally in Console, should not reach hub
             }
         }

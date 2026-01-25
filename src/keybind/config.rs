@@ -34,7 +34,7 @@ impl Default for KeybindConfig {
             .insert(KeyEvent::ctrl_char('a'), Action::Send(vec![0x01])); // Send literal Ctrl+A
         config
             .prefix_bindings
-            .insert(KeyEvent::char('t'), Action::ToggleTimestamp);
+            .insert(KeyEvent::char('t'), Action::FilterToggle("timestamp".to_string()));
 
         config
     }
@@ -286,7 +286,10 @@ fn parse_action(parts: &mut LineParser) -> Result<Action, String> {
 
     match action_name {
         "quit" => Ok(Action::Quit),
-        "toggle-timestamp" => Ok(Action::ToggleTimestamp),
+        "filter-toggle" => {
+            let filter_name = parts.next_word().ok_or("filter-toggle requires a filter name")?;
+            Ok(Action::FilterToggle(filter_name.to_string()))
+        }
         "send" => {
             let string = parts
                 .next_quoted_string()

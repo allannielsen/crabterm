@@ -4,13 +4,17 @@ use chrono::Local;
 
 use super::IoFilter;
 
+pub const NAME: &str = "timestamp";
+
 pub struct TimestampFilter {
+    enabled: bool,
     at_line_start: bool,
 }
 
 impl TimestampFilter {
     pub fn new() -> Self {
         TimestampFilter {
+            enabled: false,
             at_line_start: true,
         }
     }
@@ -23,6 +27,14 @@ impl Default for TimestampFilter {
 }
 
 impl IoFilter for TimestampFilter {
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn toggle(&mut self) {
+        self.enabled = !self.enabled;
+    }
+
     fn filter_out(&mut self, buf: &[u8]) -> Vec<u8> {
         let mut output = Vec::new();
         for &byte in buf {

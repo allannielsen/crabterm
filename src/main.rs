@@ -19,6 +19,7 @@ use io::EchoDevice;
 use io::SerialDevice;
 use io::TcpDevice;
 use io::TcpServer;
+use iofilter::FilterChain;
 use keybind::KeybindConfig;
 use term::disable_raw_mode;
 
@@ -201,9 +202,11 @@ fn main() -> std::io::Result<()> {
     let mut hub = IoHub::new(device, server)?;
 
     if !headless {
-        let console = Console::new(KeybindConfig::load(
-            matches.get_one::<PathBuf>("config").cloned(),
-        ))?;
+        let filter_chain = FilterChain::new();
+        let console = Console::new(
+            KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned()),
+            filter_chain,
+        )?;
         hub.add(Box::new(console))?;
     }
 

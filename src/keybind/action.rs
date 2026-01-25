@@ -4,7 +4,7 @@ use std::fmt;
 pub enum Action {
     Quit,
     Send(Vec<u8>),
-    ToggleTimestamp,
+    FilterToggle(String),
 }
 
 impl fmt::Display for Action {
@@ -18,7 +18,7 @@ impl fmt::Display for Action {
                     write!(f, "send-bytes {:02x?}", bytes)
                 }
             }
-            Action::ToggleTimestamp => write!(f, "toggle-timestamp"),
+            Action::FilterToggle(name) => write!(f, "toggle {}", name),
         }
     }
 }

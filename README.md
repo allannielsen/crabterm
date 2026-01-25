@@ -63,7 +63,7 @@ prefix ctrl+a
 bind ctrl+a b send \x00
 
 # Toggle timestamp filter
-bind ctrl+a t toggle-timestamp
+bind ctrl+a t filter-toggle timestamp
 ```
 
 ## License

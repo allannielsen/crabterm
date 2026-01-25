@@ -3,7 +3,7 @@ use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
 use std::os::unix::io::AsRawFd;
 
-use crate::iofilter::{IoFilter, TimestampFilter};
+use crate::iofilter::FilterChain;
 use crate::keybind::action::Action;
 use crate::keybind::{KeybindConfig, KeybindProcessor, KeybindResult};
 use crate::term::{disable_raw_mode, enable_raw_mode};
@@ -13,11 +13,11 @@ pub struct Console {
     fd_in: SourceFd<'static>,
     keybind_processor: KeybindProcessor,
     pending_results: Vec<KeybindResult>,
-    timestamp_filter: Option<TimestampFilter>,
+    filter_chain: FilterChain,
 }
 
 impl Console {
-    pub fn new(keybind_config: KeybindConfig) -> Result<Self> {
+    pub fn new(keybind_config: KeybindConfig, filter_chain: FilterChain) -> Result<Self> {
         // stdin is a global and its FD is valid for the entire program
         let fd = std::io::stdin().as_raw_fd();
 
@@ -29,18 +29,15 @@ impl Console {
             fd_in: SourceFd(fd_ref),
             keybind_processor: KeybindProcessor::new(keybind_config),
             pending_results: Vec::new(),
-            timestamp_filter: None,
+            filter_chain,
         })
     }
 
     fn keybind_result_to_read_result(&mut self, result: KeybindResult) -> Option<IoResult> {
         match result {
             KeybindResult::Passthrough(bytes) => Some(IoResult::Data(bytes)),
-            KeybindResult::Action(Action::ToggleTimestamp) => {
-                self.timestamp_filter = match self.timestamp_filter.take() {
-                    Some(_) => None,
-                    None => Some(TimestampFilter::new()),
-                };
+            KeybindResult::Action(Action::FilterToggle(name)) => {
+                self.filter_chain.toggle(&name);
                 None
             }
             KeybindResult::Action(action) => Some(IoResult::Action(action)),
@@ -49,10 +46,7 @@ impl Console {
     }
 
     fn apply_filter(&mut self, buf: &[u8]) -> Vec<u8> {
-        match &mut self.timestamp_filter {
-            Some(filter) => filter.filter_out(buf),
-            None => buf.to_vec(),
-        }
+        self.filter_chain.filter_out(buf)
     }
 }
 
