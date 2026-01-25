@@ -2,6 +2,11 @@
 name = "crabterm"
 version = "0.1.0"
 edition = "2024"
+description = "A terminal (UART) server and client"
+repository = "https://github.com/allannielsen/crabterm"
+license = "MIT"
+keywords = ["serial", "uart", "terminal", "tcp"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5.48", features = ["wrap_help"]}
