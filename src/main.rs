@@ -14,6 +14,7 @@ mod traits;
 
 use hub::IoHub;
 use io::Console;
+use io::EchoDevice;
 use io::SerialDevice;
 use io::TcpDevice;
 use io::TcpServer;
@@ -180,7 +181,7 @@ fn main() -> std::io::Result<()> {
             }
             DeviceMode::Echo() => {
                 raw_println!("Echo mode");
-                panic!("Still not implemented");
+                Box::new(EchoDevice::new()?)
             }
         }
     } else {
