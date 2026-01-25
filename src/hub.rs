@@ -189,6 +189,10 @@ impl IoHub {
                         ));
                     }
 
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        // Connection in progress - silently wait
+                    }
+
                     Err(e) => {
                         if device_connect_warn_first_only {
                             device_connect_warn_first_only = false;

@@ -9,6 +9,10 @@ pub struct TcpDevice {
     stream: Option<TcpStream>,
     addr: SocketAddr,
     zombie: bool,
+    /// True while connection is in progress (not yet verified)
+    connecting: bool,
+    /// Token used for poll registration (needed for re-registration)
+    token: Option<Token>,
 }
 
 impl TcpDevice {
@@ -17,6 +21,8 @@ impl TcpDevice {
             stream: None,
             addr,
             zombie: false,
+            connecting: false,
+            token: None,
         })
     }
 
@@ -29,14 +35,42 @@ impl TcpDevice {
 
 impl IoInstance for TcpDevice {
     fn connect(&mut self, poll: &mut Poll, token: Token) -> Result<()> {
+        // Already connecting - check if connection completed
+        if self.connecting
+            && let Some(s) = &mut self.stream
+        {
+            if let Ok(Some(err)) = s.take_error() {
+                // Connection failed
+                info!("TCP-Device/connect: {} -> zombie", err);
+                self.zombie = true;
+                self.connecting = false;
+                return Err(err);
+            }
+            // Connection succeeded - re-register for READABLE only (not WRITABLE)
+            poll.registry().reregister(s, token, Interest::READABLE)?;
+            info!("TCP-Device/{}: Connection verified", self.addr_as_string());
+            self.connecting = false;
+            return Ok(());
+        }
+
+        // Already connected
+        if self.stream.is_some() {
+            return Ok(());
+        }
+
+        info!("TCP-Device/{}: Try connect", self.addr_as_string());
         let mut s = TcpStream::connect(self.addr)?;
 
+        // Register for WRITABLE to detect connection completion, plus READABLE for data
         poll.registry()
-            .register(&mut s, token, Interest::READABLE)?;
+            .register(&mut s, token, Interest::READABLE | Interest::WRITABLE)?;
 
         self.stream = Some(s);
+        self.connecting = true; // Connection in progress, not yet verified
+        self.token = Some(token);
 
-        Ok(())
+        // Return WouldBlock to indicate connection is in progress
+        Err(Error::new(ErrorKind::WouldBlock, "Connection in progress"))
     }
 
     fn addr_as_string(&self) -> String {
@@ -44,7 +78,11 @@ impl IoInstance for TcpDevice {
     }
 
     fn connected(&self) -> bool {
-        self.stream.is_some()
+        self.stream.is_some() && !self.connecting
+    }
+
+    fn disconnect_needed(&self) -> bool {
+        self.zombie
     }
 
     fn disconnect(&mut self, poll: &mut Poll) {
@@ -54,11 +92,17 @@ impl IoInstance for TcpDevice {
                 .expect("BUG: Deregister failed!");
         }
         self.zombie = false;
+        self.connecting = false;
         self.stream = None;
     }
 
     fn read(&mut self) -> Result<IoResult> {
         let mut tmp = [0u8; 1024];
+
+        // If still connecting, wait for connect() to verify
+        if self.connecting {
+            return Ok(IoResult::None);
+        }
 
         if let Some(s) = &mut self.stream {
             match s.read(&mut tmp) {

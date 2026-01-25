@@ -12,3 +12,7 @@ termios = "0.3.3"
 mio-serial = "5.0.6"
 dirs = "6.0"
 chrono = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "net", "time", "macros", "io-util"] }
+serial_test = "3"
