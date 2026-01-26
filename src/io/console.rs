@@ -35,7 +35,10 @@ impl Console {
 
     fn keybind_result_to_read_result(&mut self, result: KeybindResult) -> Option<IoResult> {
         match result {
-            KeybindResult::Passthrough(bytes) => Some(IoResult::Data(bytes)),
+            KeybindResult::Passthrough(bytes) => {
+                let filtered = self.filter_chain.filter_in(&bytes);
+                Some(IoResult::Data(filtered))
+            }
             KeybindResult::Action(Action::FilterToggle(name)) => {
                 self.filter_chain.toggle(&name);
                 None

@@ -13,9 +13,36 @@ map Ctrl+q quit
 # Prefix bindings - press prefix, then these keys
 map-prefix q send "\x11"      # Sends ctrl+q to device
 map-prefix Ctrl+a send "\x01" # Sends ctrl+a (prefix) to device
-map-prefix t filter-toggle timestamp # Toggle timestamp filter on output
 
+# Key-binding to toggle filters
+map-prefix t filter-toggle timestamp
+map-prefix c filter-toggle charmap
+
+
+## timestamp filter ############################################################
 # Configure the timestamp filter (notice, filter must be enabled to have any
 # effect)
+
 set timestamp-abs on  # show time-of-day time-stamp
 set timestamp-rel off # show time since last line
+
+
+## Charmap filter ##############################################################
+# Character mapping filter (picocom-compatible (I think...))
+# Maps characters for input (terminal -> device) and output (device -> terminal)
+# Filter auto-enables when mappings are configured, toggle with keybind
+
+# Available mappings (comma-separated):
+#   crlf   - Map CR to LF        (\r -> \n)
+#   crcrlf - Map CR to CRLF      (\r -> \r\n)
+#   igncr  - Ignore CR           (\r -> nothing)
+#   lfcr   - Map LF to CR        (\n -> \r)
+#   lfcrlf - Map LF to CRLF      (\n -> \r\n)
+#   ignlf  - Ignore LF           (\n -> nothing)
+#   bsdel  - Map BS to DEL       (0x08 -> 0x7f)
+#   delbs  - Map DEL to BS       (0x7f -> 0x08)
+#
+# charmap-imap: mappings for data FROM device (output to terminal)
+# charmap-omap: mappings for data TO device (input from terminal)
+# set charmap-imap crlf,delbs
+# set charmap-omap crcrlf

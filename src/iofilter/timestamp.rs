@@ -5,6 +5,7 @@ use std::time::Instant;
 use chrono::Local;
 
 use super::IoFilter;
+use crate::keybind::config::SettingValue;
 
 pub const NAME: &str = "timestamp";
 pub const SETTING_ABS: &str = "timestamp-abs";
@@ -29,11 +30,11 @@ impl TimestampFilter {
         }
     }
 
-    pub fn configure(&mut self, settings: &HashMap<String, bool>) {
-        if let Some(&value) = settings.get(SETTING_ABS) {
+    pub fn configure(&mut self, settings: &HashMap<String, SettingValue>) {
+        if let Some(value) = settings.get(SETTING_ABS).and_then(|v| v.as_bool()) {
             self.show_abs = value;
         }
-        if let Some(&value) = settings.get(SETTING_REL) {
+        if let Some(value) = settings.get(SETTING_REL).and_then(|v| v.as_bool()) {
             self.show_rel = value;
         }
     }

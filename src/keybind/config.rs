@@ -7,12 +7,34 @@ use std::path::PathBuf;
 use super::action::Action;
 use super::key::{Key, KeyEvent, Modifiers};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SettingValue {
+    Bool(bool),
+    String(String),
+}
+
+impl SettingValue {
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            SettingValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            SettingValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct KeybindConfig {
     pub prefix: Option<KeyEvent>,
     pub prefix_bindings: HashMap<KeyEvent, Action>,
     pub direct_bindings: HashMap<KeyEvent, Action>,
-    pub settings: HashMap<String, bool>,
+    pub settings: HashMap<String, SettingValue>,
 }
 
 impl Default for KeybindConfig {
@@ -125,11 +147,11 @@ impl KeybindConfig {
             }
             "set" => {
                 let name = parts.next_word().ok_or("Missing setting name")?;
-                let value_str = parts.next_word().ok_or("Missing setting value (on/off)")?;
+                let value_str = parts.next_word().ok_or("Missing setting value")?;
                 let value = match value_str.to_lowercase().as_str() {
-                    "on" | "true" | "yes" | "1" => true,
-                    "off" | "false" | "no" | "0" => false,
-                    _ => return Err(format!("Invalid boolean value: {}", value_str)),
+                    "on" | "true" | "yes" | "1" => SettingValue::Bool(true),
+                    "off" | "false" | "no" | "0" => SettingValue::Bool(false),
+                    _ => SettingValue::String(value_str.to_string()),
                 };
                 self.settings.insert(name.to_string(), value);
             }
