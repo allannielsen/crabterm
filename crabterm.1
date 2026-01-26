@@ -1,0 +1,232 @@
+.TH CRABTERM 1 "January 2026" "crabterm 0.1.0" "User Commands"
+.SH NAME
+crabterm \- a terminal (UART) server and client
+.SH SYNOPSIS
+.B crabterm
+[\fIOPTIONS\fR] [\fIDEVICE\fR]
+.SH DESCRIPTION
+.B crabterm
+is a terminal emulator for serial ports and TCP connections, similar to picocom
+or minicom. It can also act as a TCP server to expose a serial port over the
+network to multiple simultaneous clients.
+.PP
+If used without the server capability, it functions as a simple serial terminal.
+With the \fB\-p\fR option, it can expose a device over TCP for remote access.
+.SH ARGUMENTS
+.TP
+.I DEVICE
+The device to connect to. Can be one of:
+.RS
+.IP \(bu 2
+A serial device path (e.g., \fB/dev/ttyUSB0\fR)
+.IP \(bu 2
+A TCP address in the form \fBhost:port\fR (e.g., \fB192.168.1.100:4000\fR)
+.IP \(bu 2
+The literal string \fBecho\fR for echo mode (testing without hardware)
+.RE
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fICONFIG_PATH\fR
+Path to the configuration file. Default: \fB~/.crabterm\fR
+.TP
+.BR \-p ", " \-\-port " " \fIPORT\fR
+Open a TCP server and listen on the specified port. Allows remote clients to
+connect and interact with the device.
+.TP
+.BR \-b ", " \-\-baudrate " " \fIBAUDRATE\fR
+Set the baud rate for serial connections. Default: \fB115200\fR
+.TP
+.B \-\-headless
+Run in headless/daemon mode. No local console is attached; useful when running
+as a server with \fB\-p\fR.
+.TP
+.BR \-d ", " \-\-device " " \fIDEVICE\fR
+Alternative way to specify the device (same as positional argument).
+.TP
+.BR \-l ", " \-\-log\-file " " \fILOG_PATH\fR
+Enable logging and write logs to the specified file.
+.TP
+.BR \-L ", " \-\-log\-level " " \fILOG_LEVEL\fR
+Set the log level. One of: \fBerror\fR, \fBwarn\fR, \fBinfo\fR, \fBdebug\fR,
+\fBtrace\fR. Default: \fBinfo\fR
+.TP
+.BR \-h ", " \-\-help
+Print help information and exit.
+.TP
+.BR \-V ", " \-\-version
+Print version information and exit.
+.SH CONFIGURATION
+The configuration file (default \fB~/.crabterm\fR) controls keybindings, prefix
+keys, and filter settings. Lines starting with \fB#\fR are comments.
+.SS Directives
+.TP
+.BI "prefix " KEY
+Set the prefix key. After pressing this key, prefix bindings become active.
+Example: \fBprefix Ctrl+a\fR
+.TP
+.BI "map " "KEY ACTION"
+Create a direct keybinding (no prefix required).
+Example: \fBmap Ctrl+q quit\fR
+.TP
+.BI "map\-prefix " "KEY ACTION"
+Create a keybinding that requires the prefix key first.
+Example: \fBmap\-prefix t filter\-toggle timestamp\fR
+.TP
+.BI "set " "NAME VALUE"
+Set a configuration option. VALUE can be \fBon\fR/\fBoff\fR for boolean
+settings, or a string for other settings.
+.SS Key Syntax
+Keys are specified as modifier combinations plus a key name:
+.IP \(bu 2
+Modifiers: \fBCtrl\fR, \fBAlt\fR, \fBShift\fR (can be combined with \fB+\fR)
+.IP \(bu 2
+Special keys: \fBEscape\fR, \fBEnter\fR, \fBTab\fR, \fBBackspace\fR, \fBF1\fR\-\fBF12\fR
+.IP \(bu 2
+Arrow keys: \fBUp\fR, \fBDown\fR, \fBLeft\fR, \fBRight\fR
+.IP \(bu 2
+Single characters: \fBa\fR, \fBq\fR, \fB1\fR, etc.
+.PP
+Examples: \fBCtrl+a\fR, \fBCtrl+Shift+x\fR, \fBAlt+F1\fR, \fBEscape\fR
+.SS Actions
+.TP
+.B quit
+Exit crabterm.
+.TP
+.BI "send " "\(dqSTRING\(dq"
+Send a string to the device. Supports escape sequences: \fB\\n\fR, \fB\\r\fR,
+\fB\\t\fR, \fB\\xHH\fR.
+.TP
+.BI "send\-bytes " "BYTE ..."
+Send raw bytes to the device. Bytes can be decimal or hex (0xHH).
+.TP
+.BI "filter\-toggle " NAME
+Toggle a filter on or off. Available filters: \fBtimestamp\fR, \fBcharmap\fR.
+.SH FILTERS
+.SS Timestamp Filter
+Prepends timestamps to each line of output from the device.
+.TP
+.B timestamp\-abs
+Show absolute time\-of\-day timestamps. Default: \fBon\fR
+.TP
+.B timestamp\-rel
+Show relative time since last line. Default: \fBoff\fR
+.SS Charmap Filter
+Performs character mapping on input and output, compatible with picocom.
+The filter auto\-enables when mappings are configured.
+.TP
+.B charmap\-imap
+Comma\-separated list of mappings for data FROM the device (output to terminal).
+.TP
+.B charmap\-omap
+Comma\-separated list of mappings for data TO the device (input from terminal).
+.PP
+Available mappings:
+.TS
+l l l.
+\fBcrlf\fR	Map CR to LF	\\r -> \\n
+\fBcrcrlf\fR	Map CR to CRLF	\\r -> \\r\\n
+\fBigncr\fR	Ignore CR	\\r -> (nothing)
+\fBlfcr\fR	Map LF to CR	\\n -> \\r
+\fBlfcrlf\fR	Map LF to CRLF	\\n -> \\r\\n
+\fBignlf\fR	Ignore LF	\\n -> (nothing)
+\fBbsdel\fR	Map BS to DEL	0x08 -> 0x7f
+\fBdelbs\fR	Map DEL to BS	0x7f -> 0x08
+.TE
+.SH EXAMPLES
+Connect to a serial device at default baud rate:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0
+.fi
+.RE
+.PP
+Connect with a specific baud rate:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0 \-b 9600
+.fi
+.RE
+.PP
+Connect to a remote serial server:
+.PP
+.RS
+.nf
+crabterm 192.168.1.100:4000
+.fi
+.RE
+.PP
+Expose a serial port over TCP:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0 \-p 4000
+.fi
+.RE
+.PP
+Run as a headless server:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0 \-p 4000 \-\-headless
+.fi
+.RE
+.PP
+Echo mode for testing:
+.PP
+.RS
+.nf
+crabterm echo
+.fi
+.RE
+.SH EXAMPLE CONFIGURATION
+.PP
+.RS
+.nf
+# Prefix key
+prefix Ctrl+a
+
+# Direct bindings
+map Ctrl+q quit
+
+# Prefix bindings
+map\-prefix q send "\\x11"
+map\-prefix Ctrl+a send "\\x01"
+map\-prefix t filter\-toggle timestamp
+map\-prefix c filter\-toggle charmap
+
+# Timestamp filter settings
+set timestamp\-abs on
+set timestamp\-rel off
+
+# Charmap filter settings
+set charmap\-imap crlf,delbs
+set charmap\-omap lfcrlf
+.fi
+.RE
+.SH DEFAULT KEYBINDINGS
+.TP
+.B Ctrl+q
+Quit crabterm.
+.TP
+.B Ctrl+a, q
+Send Ctrl+Q to device.
+.TP
+.B Ctrl+a, Ctrl+a
+Send Ctrl+A to device.
+.TP
+.B Ctrl+a, t
+Toggle timestamp filter.
+.SH FILES
+.TP
+.I ~/.crabterm
+Default configuration file.
+.SH SEE ALSO
+.BR picocom (1),
+.BR minicom (1),
+.BR screen (1)
+.SH AUTHORS
+Allan W. Nielsen
+.SH LICENSE
+MIT
