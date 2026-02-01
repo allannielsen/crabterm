@@ -5,7 +5,8 @@ use crate::keybind::Action;
 
 pub const TOKEN_DEV: Token = Token(0);
 pub const TOKEN_SERVER: Token = Token(1);
-pub const TOKEN_DYNAMIC_START: Token = Token(2);
+pub const TOKEN_SIGNAL: Token = Token(2);
+pub const TOKEN_DYNAMIC_START: Token = Token(3);
 
 /// Result of an I/O operation
 #[derive(Debug)]

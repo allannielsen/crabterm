@@ -17,6 +17,8 @@ termios = "0.3.3"
 mio-serial = "5.0.6"
 dirs = "6.0"
 chrono = "0.4"
+signal-hook = "0.3"
+signal-hook-mio = { version = "0.2", features = ["support-v1_0"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "net", "time", "macros", "io-util"] }

@@ -1,12 +1,14 @@
 use log::{error, info, trace};
-use mio::{Events, Poll, Token};
+use mio::{Events, Interest, Poll, Token};
+use signal_hook::consts::signal::{SIGINT, SIGTERM};
+use signal_hook_mio::v1_0::Signals;
 use std::collections::HashMap;
 use std::io::Result;
 use std::time::{Duration, Instant};
 
 use crate::io::TcpServer;
 use crate::keybind::Action;
-use crate::traits::{IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER};
+use crate::traits::{IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER, TOKEN_SIGNAL};
 
 pub struct IoHub {
     poll: Poll,
@@ -18,16 +20,25 @@ pub struct IoHub {
 
     server: Option<TcpServer>,
 
+    signals: Signals,
+
     quit_requested: bool,
 }
 
 impl IoHub {
     pub fn new(device: Box<dyn IoInstance>, server: Option<TcpServer>) -> Result<Self> {
+        let mut signals = Signals::new([SIGINT, SIGTERM])?;
+        let poll = Poll::new()?;
+
+        poll.registry()
+            .register(&mut signals, TOKEN_SIGNAL, Interest::READABLE)?;
+
         let mut io_hub = IoHub {
-            poll: Poll::new()?,
+            poll,
             instances: HashMap::new(),
             device,
             server,
+            signals,
             quit_requested: false,
         };
 
@@ -131,6 +142,11 @@ impl IoHub {
             {
                 self.add(c)?;
             }
+        } else if token_event == TOKEN_SIGNAL {
+            for signal in self.signals.pending() {
+                info!("Received signal {}, initiating graceful shutdown", signal);
+                self.quit_requested = true;
+            }
         } else if let Some(client) = self.instances.get_mut(&token_event) {
             // NOTICE: The 'console' is also a client
             if let Ok(result) = client.read() {
@@ -206,7 +222,14 @@ impl IoHub {
                 }
             }
 
-            self.poll.poll(&mut events, Some(tick))?;
+            match self.poll.poll(&mut events, Some(tick)) {
+                Ok(()) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                    // EINTR - signal received, loop will continue and signal
+                    // will be processed on next poll iteration
+                }
+                Err(e) => return Err(e),
+            }
 
             for event in events.iter() {
                 self.handle_event(event.token())?;
