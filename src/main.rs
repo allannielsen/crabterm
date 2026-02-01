@@ -152,7 +152,7 @@ fn main() -> std::io::Result<()> {
             .unwrap()
             .log_to_file(FileSpec::try_from(path).expect("Invalid log path"))
             .append()
-            .write_mode(WriteMode::BufferAndFlush)
+            .write_mode(WriteMode::Direct)
             .start()
             .unwrap();
     }
