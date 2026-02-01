@@ -1,7 +1,24 @@
 use clap::{Arg, Command, value_parser};
-use flexi_logger::{FileSpec, LevelFilter, Logger, WriteMode};
+use flexi_logger::{DeferredNow, FileSpec, LevelFilter, Logger, Record, WriteMode};
 use log::info;
 use std::io::Write;
+
+fn log_format(
+    w: &mut dyn std::io::Write,
+    _now: &mut DeferredNow,
+    record: &Record,
+) -> std::io::Result<()> {
+    let module = record.module_path().unwrap_or("?");
+    let module_short = module.strip_prefix("crabterm::").unwrap_or(module);
+    write!(
+        w,
+        "{} [{}:{}] {}",
+        record.level(),
+        module_short,
+        record.line().unwrap_or(0),
+        record.args()
+    )
+}
 use std::net::SocketAddr;
 use std::panic;
 use std::path::PathBuf;
@@ -151,6 +168,7 @@ fn main() -> std::io::Result<()> {
         Logger::try_with_str(level.as_str())
             .unwrap()
             .log_to_file(FileSpec::try_from(path).expect("Invalid log path"))
+            .format(log_format)
             .append()
             .write_mode(WriteMode::Direct)
             .start()

@@ -25,7 +25,7 @@ impl TcpServer {
     pub fn accept(&mut self) -> Option<Box<dyn IoInstance>> {
         match self.listener.accept() {
             Ok((stream, addr)) => {
-                info!("TcpClient:{} New client connected", addr);
+                info!("{}: New client connected", addr);
                 let client = TcpClient {
                     stream,
                     addr,
@@ -54,7 +54,7 @@ impl TcpClient {
     fn close(&mut self) {
         self.connected = false;
         if let Err(e) = self.stream.shutdown(Shutdown::Both) {
-            error!("TcpClient:{} Shutdown error: {}", self.addr, e);
+            error!("{}: Shutdown error: {}", self.addr, e);
         }
     }
 }
@@ -64,7 +64,7 @@ impl IoInstance for TcpClient {
         poll.registry()
             .register(&mut self.stream, token, Interest::READABLE)
             .map_err(|e| {
-                error!("TcpClient:{} Register error: {}", self.addr, e);
+                error!("{}: Register error: {}", self.addr, e);
                 e
             })
     }
@@ -74,14 +74,14 @@ impl IoInstance for TcpClient {
     }
 
     fn addr_as_string(&self) -> String {
-        format!("TCP-Client:{}", self.addr)
+        self.addr.to_string()
     }
 
     fn disconnect(&mut self, poll: &mut Poll) {
         self.close();
 
         if let Err(e) = poll.registry().deregister(&mut self.stream) {
-            error!("TcpClient:{} Deregister error: {}", self.addr, e);
+            error!("{}: Deregister error: {}", self.addr, e);
         }
     }
 
@@ -99,7 +99,7 @@ impl IoInstance for TcpClient {
             }
 
             Err(e) => {
-                info!("TcpClient:{} Read error: {}", self.addr, e);
+                info!("{}: Read error: {}", self.addr, e);
                 self.close();
                 Err(e)
             }
@@ -110,7 +110,7 @@ impl IoInstance for TcpClient {
         match self.stream.write(buf) {
             Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
             Err(e) => {
-                info!("TcpClient:{} Write error: {}", self.addr, e);
+                info!("{}: Write error: {}", self.addr, e);
                 self.close();
                 Err(e)
             }
@@ -119,7 +119,7 @@ impl IoInstance for TcpClient {
 
     fn flush(&mut self) {
         if let Err(e) = self.stream.flush() {
-            info!("TcpClient:{} Flush error: {}", self.addr, e);
+            info!("{}: Flush error: {}", self.addr, e);
             self.close();
         }
     }
@@ -127,6 +127,6 @@ impl IoInstance for TcpClient {
 
 impl Drop for TcpClient {
     fn drop(&mut self) {
-        info!("TcpClient:{} dropped", self.addr);
+        info!("{}: dropped", self.addr);
     }
 }

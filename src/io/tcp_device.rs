@@ -27,7 +27,7 @@ impl TcpDevice {
     }
 
     fn err_handle_zombie(&mut self, method: &'static str, err: Error) -> Result<IoResult> {
-        info!("TCP-Device/{}: {} -> zombie", method, err);
+        info!("{}: {} {} -> zombie", self.addr_as_string(), method, err);
         self.zombie = true;
         Err(err)
     }
@@ -41,14 +41,14 @@ impl IoInstance for TcpDevice {
         {
             if let Ok(Some(err)) = s.take_error() {
                 // Connection failed
-                info!("TCP-Device/connect: {} -> zombie", err);
+                info!("{}: connect {} -> zombie", self.addr_as_string(), err);
                 self.zombie = true;
                 self.connecting = false;
                 return Err(err);
             }
             // Connection succeeded - re-register for READABLE only (not WRITABLE)
             poll.registry().reregister(s, token, Interest::READABLE)?;
-            info!("TCP-Device/{}: Connection verified", self.addr_as_string());
+            info!("{}: Connection verified", self.addr_as_string());
             self.connecting = false;
             return Ok(());
         }
@@ -58,7 +58,7 @@ impl IoInstance for TcpDevice {
             return Ok(());
         }
 
-        info!("TCP-Device/{}: Try connect", self.addr_as_string());
+        info!("{}: Try connect", self.addr_as_string());
         let mut s = TcpStream::connect(self.addr)?;
 
         // Register for WRITABLE to detect connection completion, plus READABLE for data
@@ -74,7 +74,7 @@ impl IoInstance for TcpDevice {
     }
 
     fn addr_as_string(&self) -> String {
-        format!("TCP-Device:{}", self.addr)
+        self.addr.to_string()
     }
 
     fn connected(&self) -> bool {
@@ -107,7 +107,7 @@ impl IoInstance for TcpDevice {
         if let Some(s) = &mut self.stream {
             match s.read(&mut tmp) {
                 Ok(0) => {
-                    info!("tcp device EOF");
+                    info!("{}: EOF", self.addr_as_string());
                     self.zombie = true;
                     Err(Error::other("Disconnected".to_string()))
                 }
