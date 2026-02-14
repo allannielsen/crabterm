@@ -109,6 +109,11 @@ impl IoInstance for TcpClient {
     fn write(&mut self, buf: &[u8]) -> Result<IoResult> {
         match self.stream.write(buf) {
             Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
+
+            // WouldBlock is also fatal - this is how we ensure that
+            // that we do not attempt back-preasure the device.
+            // AKA: If a client is slower than the device, then it is kicked out.
+
             Err(e) => {
                 info!("{}: Write error: {}", self.addr, e);
                 self.close();
