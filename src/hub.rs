@@ -120,26 +120,25 @@ impl IoHub {
         trace!("handle_event");
 
         if token_event == TOKEN_DEV {
-            match self.device.read() {
-                Ok(IoResult::Data(buf)) => {
-                    // Broadcast to all clients
-                    for (_, client) in self.instances.iter_mut() {
-                        client.write_all(&buf);
+            // Must loop until WouldBlock because mio uses edge-triggered epoll.
+            // A single edge may signal multiple readable chunks.
+            loop {
+                match self.device.read() {
+                    Ok(IoResult::Data(buf)) => {
+                        for (_, client) in self.instances.iter_mut() {
+                            client.write_all(&buf);
+                        }
                     }
-                }
-
-                Ok(IoResult::None) => {}
-
-                Ok(IoResult::Action(_)) => {
-                    // Device shouldn't return actions, ignore
-                }
-
-                Err(e) => {
-                    self.all_clients_str(format!(
-                        "\n\rInfo: {}: {}\n\r",
-                        self.device.addr_as_string(),
-                        e
-                    ));
+                    Ok(IoResult::None) => break,
+                    Ok(IoResult::Action(_)) => {}
+                    Err(e) => {
+                        self.all_clients_str(format!(
+                            "\n\rInfo: {}: {}\n\r",
+                            self.device.addr_as_string(),
+                            e
+                        ));
+                        break;
+                    }
                 }
             }
         } else if token_event == TOKEN_SERVER {
@@ -161,11 +160,22 @@ impl IoHub {
             }
         } else if let Some(client) = self.instances.get_mut(&token_event) {
             // NOTICE: The 'console' is also a client
-            if let Ok(result) = client.read() {
+            // Must loop until WouldBlock because mio uses edge-triggered epoll.
+            let mut results = Vec::new();
+            loop {
+                match client.read() {
+                    Ok(IoResult::None) => break,
+                    Ok(result) => results.push(result),
+                    Err(_) => break,
+                }
+            }
+            for result in results {
                 self.handle_read_result(result);
             }
         } else {
-            panic!("Unexpected token became ready: {}", token_event.0);
+            // With edge-triggered epoll, stale events can arrive for tokens that were
+            // removed earlier in the same event batch. This is expected and harmless.
+            trace!("Ignoring event for unknown token: {}", token_event.0);
         }
 
         // Clean up all instances not connected ///////////////////////////////
