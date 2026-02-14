@@ -23,10 +23,12 @@ pub struct IoHub {
     signals: Signals,
 
     quit_requested: bool,
+
+    announce: bool,
 }
 
 impl IoHub {
-    pub fn new(device: Box<dyn IoInstance>, server: Option<TcpServer>) -> Result<Self> {
+    pub fn new(device: Box<dyn IoInstance>, server: Option<TcpServer>, announce: bool) -> Result<Self> {
         let mut signals = Signals::new([SIGINT, SIGTERM])?;
         let poll = Poll::new()?;
 
@@ -40,6 +42,7 @@ impl IoHub {
             server,
             signals,
             quit_requested: false,
+            announce,
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -77,8 +80,11 @@ impl IoHub {
     }
 
     fn all_clients_str(&mut self, msg: String) {
-        for (_, client) in self.instances.iter_mut() {
-            client.write_all(msg.as_bytes());
+        info!("Announce: {}", msg.trim());
+        if self.announce {
+            for (_, client) in self.instances.iter_mut() {
+                client.write_all(msg.as_bytes());
+            }
         }
     }
 

@@ -166,6 +166,12 @@ fn main() -> std::io::Result<()> {
                 .default_value("info")
                 .num_args(1),
         )
+        .arg(
+            Arg::new("no-announce")
+                .long("no-announce")
+                .help("Suppress informational messages (connect/disconnect) to clients")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     if let Some(path) = matches.get_one::<PathBuf>("log-file") {
@@ -222,7 +228,8 @@ fn main() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
-    let mut hub = IoHub::new(device, server)?;
+    let announce = !matches.get_flag("no-announce");
+    let mut hub = IoHub::new(device, server, announce)?;
 
     if !headless {
         let config = KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned());
