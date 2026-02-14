@@ -137,9 +137,15 @@ impl IoHub {
                 }
             }
         } else if token_event == TOKEN_SERVER {
-            if let Some(s) = &mut self.server
-                && let Some(c) = s.accept()
-            {
+            // Must loop until WouldBlock because mio uses edge-triggered epoll.
+            // A single edge may signal multiple pending connections.
+            let mut new_clients = Vec::new();
+            if let Some(s) = &mut self.server {
+                while let Some(c) = s.accept() {
+                    new_clients.push(c);
+                }
+            }
+            for c in new_clients {
                 self.add(c)?;
             }
         } else if token_event == TOKEN_SIGNAL {
