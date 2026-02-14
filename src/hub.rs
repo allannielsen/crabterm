@@ -126,7 +126,9 @@ impl IoHub {
                 match self.device.read() {
                     Ok(IoResult::Data(buf)) => {
                         for (_, client) in self.instances.iter_mut() {
-                            client.write_all(&buf);
+                            if client.connected() {
+                                client.write_all(&buf);
+                            }
                         }
                     }
                     Ok(IoResult::None) => break,

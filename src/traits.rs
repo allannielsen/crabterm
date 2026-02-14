@@ -45,8 +45,9 @@ pub trait IoInstance {
         while written < buf.len() {
             match self.write(&buf[written..]) {
                 Ok(IoResult::Data(d)) if !d.is_empty() => written += d.len(),
-                Ok(_) => {}
-                Err(_) => break,
+                // Break on empty data (socket can't accept more) or error
+                // to avoid spinning when no progress is made.
+                _ => break,
             }
         }
         self.flush()
