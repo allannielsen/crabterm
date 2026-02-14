@@ -5,14 +5,19 @@ use std::io::Write;
 
 fn log_format(
     w: &mut dyn std::io::Write,
-    _now: &mut DeferredNow,
+    now: &mut DeferredNow,
     record: &Record,
 ) -> std::io::Result<()> {
     let module = record.module_path().unwrap_or("?");
     let module_short = module.strip_prefix("crabterm::").unwrap_or(module);
+    let t = now.now();
+    let micros = t.timestamp_subsec_micros();
     write!(
         w,
-        "{} [{}:{}] {}",
+        "{}.{:03}.{:03} {} [{}:{}] {}",
+        t.format("%y-%m-%d %H:%M:%S"),
+        micros / 1000,
+        micros % 1000,
         record.level(),
         module_short,
         record.line().unwrap_or(0),
