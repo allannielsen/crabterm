@@ -2,7 +2,6 @@
 mod common;
 
 use common::{find_available_port, wait_for_port, CrabtermProcess, LogLevel};
-use serial_test::serial;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -10,33 +9,54 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::time::timeout;
 
+/// Common test setup: starts a device listener, spawns crabterm, accepts the
+/// device connection, and waits for crabterm's server port to be ready.
+struct TestHarness {
+    device_listener: TcpListener,
+    device_socket: tokio::net::TcpStream,
+    crabterm_port: u16,
+    crabterm: CrabtermProcess,
+}
+
+impl TestHarness {
+    async fn start(log_level: LogLevel) -> Self {
+        let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let device_port = device_listener.local_addr().unwrap().port();
+
+        let crabterm_port = find_available_port().await;
+        let crabterm = CrabtermProcess::builder()
+            .device(&format!("127.0.0.1:{}", device_port))
+            .listen(crabterm_port)
+            .log_level(log_level)
+            .spawn();
+
+        let (device_socket, _) = timeout(Duration::from_secs(2), device_listener.accept())
+            .await
+            .expect("Timeout waiting for crabterm to connect to device")
+            .unwrap();
+
+        assert!(
+            wait_for_port(crabterm_port, 2000).await,
+            "Crabterm server should start"
+        );
+
+        Self {
+            device_listener,
+            device_socket,
+            crabterm_port,
+            crabterm,
+        }
+    }
+}
+
 #[tokio::test]
-// #[serial]
 async fn test_tcp_connects_to_server() {
-    // Start a simple TCP server (the "device")
-    let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let device_port = device_listener.local_addr().unwrap().port();
-
-    // Start crabterm connecting to our server, with its own listening port
-    let crabterm_port = find_available_port().await;
-    let mut crabterm = CrabtermProcess::builder()
-        .device(&format!("127.0.0.1:{}", device_port))
-        .listen(crabterm_port)
-        .log_level(LogLevel::Debug)
-        .spawn();
-
-    // Accept crabterm's connection to our "device"
-    let accept_result = timeout(Duration::from_secs(2), device_listener.accept()).await;
-    assert!(accept_result.is_ok(), "Crabterm should connect to device");
-
-    let (mut device_socket, device_peer) = accept_result.unwrap().unwrap();
-    tprintln!("Accepted device connection from: {}", device_peer);
-
-    // Wait for crabterm's server to be ready
-    assert!(
-        wait_for_port(crabterm_port, 2000).await,
-        "Crabterm server should start"
-    );
+    let TestHarness {
+        mut device_socket,
+        crabterm_port,
+        mut crabterm,
+        ..
+    } = TestHarness::start(LogLevel::Debug).await;
 
     // Connect a client to crabterm
     tprintln!("Trying to connect");
@@ -78,31 +98,14 @@ async fn test_tcp_connects_to_server() {
 }
 
 #[tokio::test]
-// #[serial]
 async fn test_tcp_reconnects_after_server_disconnect() {
-    // Start initial TCP server (the "device")
-    let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let device_port = device_listener.local_addr().unwrap().port();
-    let device_addr = format!("127.0.0.1:{}", device_port);
-
-    // Start crabterm
-    let crabterm_port = find_available_port().await;
-    let mut crabterm = CrabtermProcess::builder()
-        .device(&device_addr)
-        .listen(crabterm_port)
-        .spawn();
-
-    // Accept first connection
-    let (mut device_socket, _) = timeout(Duration::from_secs(2), device_listener.accept())
-        .await
-        .expect("Timeout waiting for crabterm connection")
-        .expect("Accept failed");
-
-    // Wait for crabterm's server
-    assert!(
-        wait_for_port(crabterm_port, 2000).await,
-        "Crabterm server should start"
-    );
+    let TestHarness {
+        device_listener,
+        mut device_socket,
+        crabterm_port,
+        mut crabterm,
+    } = TestHarness::start(LogLevel::default()).await;
+    let device_addr = device_listener.local_addr().unwrap().to_string();
 
     // Verify initial connection works
     let mut client = TcpStream::connect(format!("127.0.0.1:{}", crabterm_port)).unwrap();
@@ -169,7 +172,6 @@ async fn test_tcp_reconnects_after_server_disconnect() {
 }
 
 #[tokio::test]
-// #[serial]
 async fn test_tcp_handles_connection_refused() {
     // Pick a port with nothing listening
     let unused_port = find_available_port().await;
@@ -205,31 +207,13 @@ async fn test_tcp_handles_connection_refused() {
 /// A slow (non-reading) client must not cause backpressure on the device connection.
 /// Crabterm should accept all device data regardless of client state.
 #[tokio::test]
-#[serial]
 async fn test_slow_client_does_not_backpressure_device() {
-    // Start a TCP server to emulate the device
-    let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let device_port = device_listener.local_addr().unwrap().port();
-
-    // Start crabterm
-    let crabterm_port = find_available_port().await;
-    let mut crabterm = CrabtermProcess::builder()
-        .device(&format!("127.0.0.1:{}", device_port))
-        .listen(crabterm_port)
-        .log_level(LogLevel::Debug)
-        .spawn();
-
-    // Accept crabterm's connection to the emulated device
-    let (mut device_socket, _) = timeout(Duration::from_secs(2), device_listener.accept())
-        .await
-        .expect("Timeout waiting for crabterm to connect to device")
-        .unwrap();
-
-    // Wait for crabterm's server to be ready
-    assert!(
-        wait_for_port(crabterm_port, 2000).await,
-        "Crabterm server should start"
-    );
+    let TestHarness {
+        mut device_socket,
+        crabterm_port,
+        mut crabterm,
+        ..
+    } = TestHarness::start(LogLevel::Debug).await;
 
     // Connect a client that will never read
     let _slow_client = TcpStream::connect(format!("127.0.0.1:{}", crabterm_port)).unwrap();
@@ -321,34 +305,17 @@ async fn test_slow_client_does_not_backpressure_device() {
 /// The test loops until the full 32 MB has been transmitted end-to-end,
 /// verifying that backpressure kicks in (and is relieved) multiple times.
 #[tokio::test]
-// #[serial]
 async fn test_client_to_device_backpressure() {
-    // Start a TCP server to emulate the device
-    let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let device_port = device_listener.local_addr().unwrap().port();
+    let TestHarness {
+        device_socket,
+        crabterm_port,
+        mut crabterm,
+        ..
+    } = TestHarness::start(LogLevel::Debug).await;
 
-    // Start crabterm
-    let crabterm_port = find_available_port().await;
-    let mut crabterm = CrabtermProcess::builder()
-        .device(&format!("127.0.0.1:{}", device_port))
-        .listen(crabterm_port)
-        .log_level(LogLevel::Debug)
-        .spawn();
-
-    // Accept crabterm's connection to the emulated device.
     // Convert to std so the tokio reactor does not touch the idle socket.
-    let (device_socket, _) = timeout(Duration::from_secs(2), device_listener.accept())
-        .await
-        .expect("Timeout waiting for crabterm to connect to device")
-        .unwrap();
     let mut device_socket = device_socket.into_std().unwrap();
     device_socket.set_nonblocking(true).unwrap();
-
-    // Wait for crabterm's server to be ready
-    assert!(
-        wait_for_port(crabterm_port, 2000).await,
-        "Crabterm server should start"
-    );
 
     // Connect a client that will flood data toward the device
     let mut client = TcpStream::connect(format!("127.0.0.1:{}", crabterm_port)).unwrap();
@@ -489,31 +456,13 @@ async fn test_client_to_device_backpressure() {
 }
 
 #[tokio::test]
-// #[serial]
 async fn test_slow_client_does_not_block_fast_client() {
-    // Start a TCP server (the "device")
-    let device_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let device_port = device_listener.local_addr().unwrap().port();
-
-    // Start crabterm
-    let crabterm_port = find_available_port().await;
-    let mut crabterm = CrabtermProcess::builder()
-        .device(&format!("127.0.0.1:{}", device_port))
-        .listen(crabterm_port)
-        .log_level(LogLevel::Debug)
-        .spawn();
-
-    // Accept crabterm's connection to our "device"
-    let (mut device_socket, _) = timeout(Duration::from_secs(2), device_listener.accept())
-        .await
-        .expect("Timeout waiting for crabterm")
-        .unwrap();
-
-    // Wait for crabterm's server to be ready
-    assert!(
-        wait_for_port(crabterm_port, 2000).await,
-        "Crabterm server should start"
-    );
+    let TestHarness {
+        mut device_socket,
+        crabterm_port,
+        mut crabterm,
+        ..
+    } = TestHarness::start(LogLevel::Debug).await;
 
     // Connect a "fast client" FIRST
     let fast_client = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", crabterm_port))
