@@ -193,6 +193,7 @@ dependencies = [
  "clap",
  "dirs",
  "flexi_logger",
+ "libc",
  "log",
  "mio",
  "mio-serial",
