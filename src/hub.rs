@@ -1,4 +1,5 @@
 use log::{error, info, trace};
+use mio::event::Event;
 use mio::{Events, Interest, Poll, Token};
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook_mio::v1_0::Signals;
@@ -25,6 +26,15 @@ pub struct IoHub {
     quit_requested: bool,
 
     announce: bool,
+
+    /// When true the device's send buffer is full.  We stop reading from
+    /// clients so that TCP backpressure propagates all the way to the
+    /// senders.  Cleared when the device fires a WRITABLE event.
+    device_write_blocked: bool,
+
+    /// Bytes that could not be written to the device during a partial write.
+    /// Flushed first when the device becomes writable again.
+    pending_device_write: Vec<u8>,
 }
 
 impl IoHub {
@@ -43,6 +53,8 @@ impl IoHub {
             signals,
             quit_requested: false,
             announce,
+            device_write_blocked: false,
+            pending_device_write: Vec::new(),
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -88,11 +100,23 @@ impl IoHub {
         }
     }
 
+    /// Forward client data to the device.  Sets `device_write_blocked` and
+    /// registers WRITABLE interest when the device cannot accept the data.
+    /// Unwritten bytes are saved in `pending_device_write` to avoid data loss.
+    fn forward_to_device(&mut self, bytes: &[u8]) {
+        Self::try_device_write(
+            &mut *self.device,
+            &mut self.pending_device_write,
+            &mut self.device_write_blocked,
+            &mut self.poll,
+            bytes,
+        );
+    }
+
     fn handle_read_result(&mut self, result: IoResult) {
         match result {
             IoResult::Data(bytes) => {
-                // TODO, handle write error
-                self.device.write_all(&bytes);
+                self.forward_to_device(&bytes);
             }
             IoResult::Action(action) => {
                 self.handle_action(action);
@@ -107,8 +131,7 @@ impl IoHub {
                 self.quit_requested = true;
             }
             Action::Send(bytes) => {
-                // TODO, handle write error
-                self.device.write_all(&bytes);
+                self.forward_to_device(&bytes);
             }
             Action::FilterToggle(_) => {
                 // Handled locally in Console, should not reach hub
@@ -116,10 +139,88 @@ impl IoHub {
         }
     }
 
-    pub fn handle_event(&mut self, token_event: Token) -> Result<()> {
+    /// Try to write `bytes` to the device, buffering any remainder.
+    /// Returns true if the device became blocked.
+    fn try_device_write(
+        device: &mut dyn IoInstance,
+        pending: &mut Vec<u8>,
+        blocked: &mut bool,
+        poll: &mut Poll,
+        bytes: &[u8],
+    ) -> bool {
+        let n = device.write_all(bytes);
+        if n < bytes.len() {
+            pending.extend_from_slice(&bytes[n..]);
+            if !*blocked {
+                info!("Device write blocked — enabling backpressure");
+                *blocked = true;
+                if let Err(e) = device.set_writable_interest(poll, true) {
+                    error!("Failed to set writable interest: {}", e);
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Read and forward data from a single client until WouldBlock or the
+    /// device becomes write-blocked.
+    fn drain_client(&mut self, token: Token) {
+        loop {
+            let result = match self.instances.get_mut(&token) {
+                Some(client) if client.connected() => match client.read() {
+                    Ok(IoResult::None) => break,
+                    Ok(result) => result,
+                    Err(_) => break,
+                },
+                _ => break,
+            };
+            self.handle_read_result(result);
+            if self.device_write_blocked {
+                break;
+            }
+        }
+    }
+
+    /// Drain pending client data after backpressure is lifted.
+    ///
+    /// With edge-triggered epoll we will not get new READABLE events for data
+    /// that arrived while we were blocked, so we must explicitly read from
+    /// every client once the device can accept data again.
+    fn drain_pending_client_data(&mut self) {
+        let tokens: Vec<Token> = self.instances.keys().copied().collect();
+        for token in tokens {
+            self.drain_client(token);
+            if self.device_write_blocked {
+                return;
+            }
+        }
+    }
+
+    pub fn handle_event(&mut self, event: &Event) -> Result<()> {
+        let token_event = event.token();
         trace!("handle_event");
 
         if token_event == TOKEN_DEV {
+            // Handle backpressure relief: device can accept writes again.
+            if event.is_writable() && self.device_write_blocked {
+                info!("Device write unblocked — flushing pending data");
+                self.device_write_blocked = false;
+                self.device.set_writable_interest(&mut self.poll, false)?;
+
+                // Flush any bytes saved from a previous partial write.
+                if !self.pending_device_write.is_empty() {
+                    let pending = std::mem::take(&mut self.pending_device_write);
+                    self.forward_to_device(&pending);
+                }
+
+                // Only drain clients if the pending flush didn't block again.
+                if !self.device_write_blocked {
+                    self.drain_pending_client_data();
+                }
+            }
+
             // Must loop until WouldBlock because mio uses edge-triggered epoll.
             // A single edge may signal multiple readable chunks.
             loop {
@@ -160,19 +261,10 @@ impl IoHub {
                 info!("Received signal {}, initiating graceful shutdown", signal);
                 self.quit_requested = true;
             }
-        } else if let Some(client) = self.instances.get_mut(&token_event) {
+        } else if self.instances.contains_key(&token_event) {
             // NOTICE: The 'console' is also a client
-            // Must loop until WouldBlock because mio uses edge-triggered epoll.
-            let mut results = Vec::new();
-            loop {
-                match client.read() {
-                    Ok(IoResult::None) => break,
-                    Ok(result) => results.push(result),
-                    Err(_) => break,
-                }
-            }
-            for result in results {
-                self.handle_read_result(result);
+            if !self.device_write_blocked {
+                self.drain_client(token_event);
             }
         } else {
             // With edge-triggered epoll, stale events can arrive for tokens that were
@@ -212,6 +304,10 @@ impl IoHub {
         loop {
             if self.device.disconnect_needed() {
                 self.device.disconnect(&mut self.poll);
+                // Keep device_write_blocked set — clients stay blocked until
+                // the device reconnects and can accept data again.
+                // Discard pending data — the device connection is gone.
+                self.pending_device_write.clear();
             }
 
             // This will ensure devices are re-connected. If a device cannot be connected right
@@ -223,6 +319,7 @@ impl IoHub {
                 match self.device.connect(&mut self.poll, TOKEN_DEV) {
                     Ok(()) => {
                         device_connect_warn_first_only = false;
+                        self.device_write_blocked = false;
                         self.all_clients_str(format!(
                             "Info: {}: Connected\n\r",
                             self.device.addr_as_string()
@@ -256,7 +353,7 @@ impl IoHub {
             }
 
             for event in events.iter() {
-                self.handle_event(event.token())?;
+                self.handle_event(event)?;
             }
 
             // Process timeouts for all instances (e.g., keybind timeouts in Console)

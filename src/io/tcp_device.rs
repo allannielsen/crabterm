@@ -131,11 +131,26 @@ impl IoInstance for TcpDevice {
             match s.write(buf) {
                 Ok(n) => Ok(IoResult::Data(buf[..n].to_vec())),
 
+                // Send buffer full — signal backpressure, not a fatal error
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(IoResult::None),
+
                 Err(e) => self.err_handle_zombie("write", e),
             }
         } else {
             Err(Error::other("Device not connected".to_string()))
         }
+    }
+
+    fn set_writable_interest(&mut self, poll: &mut Poll, writable: bool) -> Result<()> {
+        if let (Some(s), Some(token)) = (&mut self.stream, self.token) {
+            let interest = if writable {
+                Interest::READABLE | Interest::WRITABLE
+            } else {
+                Interest::READABLE
+            };
+            poll.registry().reregister(s, token, interest)?;
+        }
+        Ok(())
     }
 
     fn flush(&mut self) {

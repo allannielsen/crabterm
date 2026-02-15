@@ -40,7 +40,9 @@ pub trait IoInstance {
         Ok(IoResult::None)
     }
 
-    fn write_all(&mut self, buf: &[u8]) {
+    /// Write all bytes. Returns the number of bytes actually written.
+    /// A short write indicates backpressure (e.g. WouldBlock).
+    fn write_all(&mut self, buf: &[u8]) -> usize {
         let mut written = 0;
         while written < buf.len() {
             match self.write(&buf[written..]) {
@@ -50,6 +52,14 @@ pub trait IoInstance {
                 _ => break,
             }
         }
-        self.flush()
+        self.flush();
+        written
+    }
+
+    /// Request WRITABLE interest from the poll loop so that the caller is
+    /// notified when the underlying socket can accept data again.
+    /// Default is a no-op for devices that don't support this.
+    fn set_writable_interest(&mut self, _poll: &mut Poll, _writable: bool) -> Result<()> {
+        Ok(())
     }
 }
