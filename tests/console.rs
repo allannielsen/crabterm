@@ -75,6 +75,10 @@ struct ConsoleTestHarness {
 
 impl ConsoleTestHarness {
     async fn start(log_level: LogLevel) -> Self {
+        Self::start_with_args(log_level, &[]).await
+    }
+
+    async fn start_with_args(log_level: LogLevel, extra_args: &[&str]) -> Self {
         // Create PTY for device
         let (device_master, device_slave) = create_pty().expect("Failed to create device PTY");
         let device_path = get_pty_path(device_slave).expect("Failed to get device path");
@@ -108,6 +112,11 @@ impl ConsoleTestHarness {
             .arg("--log-level")
             .arg(log_level.as_str())
             .arg("--no-announce");
+
+        // Add extra arguments if provided
+        for arg in extra_args {
+            cmd.arg(arg);
+        }
 
         // Redirect stdin/stdout/stderr to console slave PTY
         // Need to dup() the fd for each use since from_raw_fd takes ownership
@@ -240,4 +249,69 @@ async fn test_console_ctrl_q_exits() {
     );
 
     tprintln!("Test passed: Ctrl+Q successfully exited crabterm");
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn test_verbose_flag_enables_console_logging() {
+    // Test different verbose levels
+    let test_cases = vec![
+        (3, "INFO", "-vvv"),   // Start with INFO level since lower levels produce no output
+        (4, "DEBUG", "-vvvv"),
+    ];
+
+    for (level, expected_level, flag) in test_cases {
+        tprintln!("Testing verbose level {}: {}", level, flag);
+
+        // Start harness with verbose flag
+        let mut harness = ConsoleTestHarness::start_with_args(LogLevel::Debug, &[flag]).await;
+
+        tprintln!("Crabterm started with verbose {}", flag);
+
+        // Give it a moment to generate some log output
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Set console_master to non-blocking mode
+        unsafe {
+            let flags = libc::fcntl(harness.console_master, libc::F_GETFL);
+            libc::fcntl(harness.console_master, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+
+        // Read console output
+        let mut buf = [0u8; 8192];
+        let mut output = String::new();
+
+        // Try to read what's available (non-blocking)
+        loop {
+            match read_fd(harness.console_master, &mut buf) {
+                Ok(n) if n > 0 => {
+                    output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                }
+                _ => break,
+            }
+        }
+
+        tprintln!("Console output for {}:\n{}", flag, output);
+
+        // Verify log output appears on console with proper line endings
+        assert!(
+            output.contains("Starting crabterm") || output.contains(expected_level),
+            "Verbose flag {} should show {} level logs on console",
+            flag,
+            expected_level
+        );
+
+        // Verify proper line endings - should contain \r for raw mode compatibility
+        if !output.is_empty() {
+            assert!(
+                output.contains("\r"),
+                "Verbose console output should use \\r\\n line endings for raw mode compatibility"
+            );
+        }
+
+        // Cleanup
+        harness.stop();
+    }
+
+    tprintln!("Test passed: Verbose flags work correctly with proper line endings");
 }

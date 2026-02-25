@@ -24,6 +24,29 @@ fn log_format(
         record.args()
     )
 }
+
+/// Log format for console/stderr output - uses \r\n for raw terminal mode compatibility
+fn log_format_console(
+    w: &mut dyn std::io::Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> std::io::Result<()> {
+    let module = record.module_path().unwrap_or("?");
+    let module_short = module.strip_prefix("crabterm::").unwrap_or(module);
+    let t = now.now();
+    let micros = t.timestamp_subsec_micros();
+    write!(
+        w,
+        "{}.{:03}.{:03} {} [{}:{}] {}\r",
+        t.format("%y-%m-%d %H:%M:%S"),
+        micros / 1000,
+        micros % 1000,
+        record.level(),
+        module_short,
+        record.line().unwrap_or(0),
+        record.args()
+    )
+}
 use std::net::SocketAddr;
 use std::panic;
 use std::path::PathBuf;
@@ -175,15 +198,57 @@ fn main() -> std::io::Result<()> {
                 .help("Suppress informational messages (connect/disconnect) to clients")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .help("Enable console logging (-v=error, -vv=warn, -vvv=info, -vvvv=debug, -vvvvv=trace)")
+                .action(clap::ArgAction::Count),
+        )
         .get_matches();
 
+    // Handle verbose flag - map count to log level
+    let verbose_count = matches.get_count("verbose");
+    let verbose_level = match verbose_count {
+        0 => None,
+        1 => Some(LevelFilter::Error),
+        2 => Some(LevelFilter::Warn),
+        3 => Some(LevelFilter::Info),
+        4 => Some(LevelFilter::Debug),
+        _ => Some(LevelFilter::Trace),
+    };
+
+    // Configure logging
     if let Some(path) = matches.get_one::<PathBuf>("log-file") {
-        let level = matches.get_one::<LevelFilter>("log-level").unwrap();
-        Logger::try_with_str(level.as_str())
+        let file_level = matches.get_one::<LevelFilter>("log-level").unwrap();
+
+        // If verbose is enabled, use the more verbose of the two levels
+        let effective_level = if let Some(vlevel) = verbose_level {
+            std::cmp::max(*file_level, vlevel)
+        } else {
+            *file_level
+        };
+
+        let mut logger = Logger::try_with_str(effective_level.as_str())
             .unwrap()
             .log_to_file(FileSpec::try_from(path).expect("Invalid log path"))
-            .format(log_format)
+            .format_for_files(log_format)
             .append()
+            .write_mode(WriteMode::Direct);
+
+        // If verbose is enabled, also duplicate to stderr with console format
+        if verbose_level.is_some() {
+            logger = logger
+                .duplicate_to_stderr(flexi_logger::Duplicate::All)
+                .format_for_stderr(log_format_console);
+        }
+
+        logger.start().unwrap();
+    } else if let Some(vlevel) = verbose_level {
+        // No log file, but verbose is enabled - log to stderr with console format
+        Logger::try_with_str(vlevel.as_str())
+            .unwrap()
+            .format(log_format_console)
             .write_mode(WriteMode::Direct)
             .start()
             .unwrap();
