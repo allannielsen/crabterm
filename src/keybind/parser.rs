@@ -1,3 +1,4 @@
+use log::debug;
 use super::key::{Key, KeyEvent, Modifiers};
 
 /// Result of parsing bytes
@@ -92,6 +93,7 @@ fn parse_bytes(bytes: &[u8]) -> ParseResult {
     }
 
     let first = bytes[0];
+    debug!("parse_bytes: first byte = 0x{:02x}, buffer len = {}", first, bytes.len());
 
     // Escape sequences
     if first == 0x1b {
@@ -100,15 +102,17 @@ fn parse_bytes(bytes: &[u8]) -> ParseResult {
 
     // Control characters (0x01-0x1A except some special ones)
     if (0x01..=0x1a).contains(&first) {
-        return match first {
+        let result = match first {
             0x09 => ParseResult::Key(KeyEvent::new(Key::Tab, Modifiers::none()), 1),
             0x0d => ParseResult::Key(KeyEvent::new(Key::Enter, Modifiers::none()), 1),
             _ => {
                 // Ctrl+A = 0x01, Ctrl+B = 0x02, ..., Ctrl+Z = 0x1A
                 let c = (first + b'a' - 1) as char;
+                debug!("Control char detected: 0x{:02x} -> Ctrl+{}", first, c);
                 ParseResult::Key(KeyEvent::new(Key::Char(c), Modifiers::ctrl()), 1)
             }
         };
+        return result;
     }
 
     // DEL / Backspace

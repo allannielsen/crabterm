@@ -119,24 +119,32 @@ impl IoHub {
                 self.forward_to_device(&bytes);
             }
             IoResult::Action(action) => {
+                info!("Hub received action: {:?}", action);
                 self.handle_action(action);
+                info!("Hub handle_action returned, quit_requested = {}", self.quit_requested);
             }
             IoResult::None => {}
         }
+        trace!("handle_read_result returning");
     }
 
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::Quit => {
+                info!("Hub handling Quit action - setting quit_requested = true");
                 self.quit_requested = true;
+                info!("Hub quit_requested is now: {}", self.quit_requested);
             }
             Action::Send(bytes) => {
+                info!("Hub handling Send action with {} bytes", bytes.len());
                 self.forward_to_device(&bytes);
             }
             Action::FilterToggle(_) => {
                 // Handled locally in Console, should not reach hub
+                info!("Hub received FilterToggle (should be handled locally)");
             }
         }
+        trace!("handle_action returning");
     }
 
     /// Try to write `bytes` to the device, buffering any remainder.
@@ -167,23 +175,39 @@ impl IoHub {
     /// Read and forward data from a single client until WouldBlock or the
     /// device becomes write-blocked.
     fn drain_client(&mut self, token: Token) {
+        trace!("drain_client({:?}): starting", token);
         loop {
+            trace!("drain_client({:?}): loop iteration, quit_requested={}", token, self.quit_requested);
             let result = match self.instances.get_mut(&token) {
                 Some(client) if client.connected() => match client.read() {
-                    Ok(IoResult::None) => break,
+                    Ok(IoResult::None) => {
+                        trace!("drain_client({:?}): read returned None, breaking", token);
+                        break;
+                    }
                     Ok(result) => result,
-                    Err(_) => break,
+                    Err(_) => {
+                        trace!("drain_client({:?}): read returned error, breaking", token);
+                        break;
+                    }
                 },
-                _ => break,
+                _ => {
+                    trace!("drain_client({:?}): client not found or disconnected, breaking", token);
+                    break;
+                }
             };
+            trace!("drain_client({:?}): calling handle_read_result", token);
             self.handle_read_result(result);
+            trace!("drain_client({:?}): handle_read_result returned", token);
             if self.device_write_blocked {
+                trace!("drain_client({:?}): device_write_blocked, breaking", token);
                 break;
             }
             if self.quit_requested {
+                trace!("drain_client({:?}): quit_requested, breaking", token);
                 break;
             }
         }
+        trace!("drain_client({:?}): exiting", token);
     }
 
     /// Drain pending client data after backpressure is lifted.
@@ -358,6 +382,7 @@ impl IoHub {
             for event in events.iter() {
                 self.handle_event(event)?;
             }
+            trace!("Finished processing {} events", events.iter().count());
 
             // Process timeouts for all instances (e.g., keybind timeouts in Console)
             let results: Vec<_> = self
@@ -368,9 +393,12 @@ impl IoHub {
             for result in results {
                 self.handle_read_result(result);
             }
+            trace!("Finished processing timeouts");
 
             // Check if quit was requested
+            trace!("Checking quit_requested: {}", self.quit_requested);
             if self.quit_requested {
+                info!("Quit requested - exiting hub.run()");
                 return Ok(());
             }
 

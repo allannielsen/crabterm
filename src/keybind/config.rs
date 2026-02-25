@@ -81,7 +81,7 @@ impl KeybindConfig {
             config_path = path;
         }
 
-        if let Some(p) = config_path
+        let config = if let Some(p) = config_path
             && p.exists()
         {
             match KeybindConfig::load_from_file(&p) {
@@ -95,8 +95,23 @@ impl KeybindConfig {
                 }
             }
         } else {
+            info!("No config file found, using defaults");
             KeybindConfig::default()
+        };
+
+        // Log the loaded configuration
+        info!("Keybind configuration:");
+        info!("  Prefix: {:?}", config.prefix);
+        info!("  Direct bindings: {} entries", config.direct_bindings.len());
+        for (key, action) in &config.direct_bindings {
+            info!("    {:?} -> {:?}", key, action);
         }
+        info!("  Prefix bindings: {} entries", config.prefix_bindings.len());
+        for (key, action) in &config.prefix_bindings {
+            info!("    {:?} -> {:?}", key, action);
+        }
+
+        config
     }
 
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {

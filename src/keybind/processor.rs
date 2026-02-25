@@ -1,3 +1,4 @@
+use log::debug;
 use std::time::{Duration, Instant};
 
 use super::action::KeybindResult;
@@ -97,45 +98,63 @@ impl KeybindProcessor {
 
     fn handle_parse_result(&mut self, parse_result: ParseResult) -> Option<KeybindResult> {
         match parse_result {
-            ParseResult::Key(key_event, _) => self.handle_key_event(key_event),
-            ParseResult::Passthrough(byte) => Some(KeybindResult::Passthrough(vec![byte])),
+            ParseResult::Key(key_event, consumed) => {
+                debug!("Parsed key event: {:?} (consumed {} bytes)", key_event, consumed);
+                self.handle_key_event(key_event)
+            }
+            ParseResult::Passthrough(byte) => {
+                debug!("Passthrough byte: 0x{:02x}", byte);
+                Some(KeybindResult::Passthrough(vec![byte]))
+            }
             ParseResult::NeedMore => None,
         }
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Option<KeybindResult> {
-        match self.state {
+        debug!("Handling key event in state {:?}: {:?}", self.state, key_event);
+        let result = match self.state {
             State::Normal => self.handle_normal(key_event),
             State::AwaitingPrefixCommand => self.handle_prefix_mode(key_event),
-        }
+        };
+        debug!("Key event result: {:?}", result);
+        result
     }
 
     fn handle_normal(&mut self, key_event: KeyEvent) -> Option<KeybindResult> {
         // Check direct bindings first
+        debug!("Checking direct bindings for {:?}", key_event);
         if let Some(action) = self.config.direct_bindings.get(&key_event) {
+            debug!("Found direct binding: {:?} -> {:?}", key_event, action);
             return Some(KeybindResult::Action(action.clone()));
         }
+        debug!("No direct binding found for {:?}", key_event);
 
         // Check if this is the prefix key
         if let Some(prefix) = &self.config.prefix
             && key_event == *prefix
         {
+            debug!("Key matches prefix, entering prefix mode");
             self.state = State::AwaitingPrefixCommand;
             self.state_entered = Instant::now();
             return Some(KeybindResult::Consumed);
         }
 
         // Pass through
+        debug!("Passing through key: {:?}", key_event);
         key_event_to_bytes(&key_event).map(KeybindResult::Passthrough)
     }
 
     fn handle_prefix_mode(&mut self, key_event: KeyEvent) -> Option<KeybindResult> {
+        debug!("Exiting prefix mode");
         self.state = State::Normal;
 
         // Check prefix bindings
+        debug!("Checking prefix bindings for {:?}", key_event);
         if let Some(action) = self.config.prefix_bindings.get(&key_event) {
+            debug!("Found prefix binding: {:?} -> {:?}", key_event, action);
             return Some(KeybindResult::Action(action.clone()));
         }
+        debug!("No prefix binding found for {:?}", key_event);
 
         // Unbound key in prefix mode - forward prefix + this key
         let mut bytes = Vec::new();
@@ -151,6 +170,7 @@ impl KeybindProcessor {
         if bytes.is_empty() {
             None
         } else {
+            debug!("Forwarding prefix + key as passthrough");
             Some(KeybindResult::Passthrough(bytes))
         }
     }

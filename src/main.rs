@@ -92,6 +92,9 @@ fn main() -> std::io::Result<()> {
         let _ = writeln!(std::io::stderr(), "\nPanic occurred: {}\n", info);
     }));
 
+    // Collect args before parsing for logging
+    let args: Vec<String> = std::env::args().collect();
+
     let dev_help = "Device - /dev/rs232-device|(ip-address|hostname):port|echo";
     let matches = Command::new("crabterm")
         .version(VERSION)
@@ -187,6 +190,7 @@ fn main() -> std::io::Result<()> {
     }
 
     info!("Starting crabterm");
+    info!("Command line: {}", args.join(" "));
 
     let mut server: Option<TcpServer> = None;
     if let Some(port) = matches.get_one::<u16>("port") {
@@ -239,11 +243,16 @@ fn main() -> std::io::Result<()> {
     }
 
     loop {
+        info!("Main loop: checking quit status");
         if hub.is_quit_requested() {
+            info!("Main loop: quit requested, breaking");
             break;
         }
-        hub.run()?
+        info!("Main loop: calling hub.run()");
+        hub.run()?;
+        info!("Main loop: hub.run() returned");
     }
 
+    info!("Main loop exited, shutting down");
     Ok(())
 }

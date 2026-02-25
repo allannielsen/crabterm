@@ -1,3 +1,4 @@
+use log::debug;
 use mio::unix::SourceFd;
 use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
@@ -34,7 +35,8 @@ impl Console {
     }
 
     fn keybind_result_to_read_result(&mut self, result: KeybindResult) -> Option<IoResult> {
-        match result {
+        debug!("Console converting keybind result: {:?}", result);
+        let io_result = match result {
             KeybindResult::Passthrough(bytes) => {
                 let filtered = self.filter_chain.filter_in(&bytes);
                 Some(IoResult::Data(filtered))
@@ -43,9 +45,14 @@ impl Console {
                 self.filter_chain.toggle(&name);
                 None
             }
-            KeybindResult::Action(action) => Some(IoResult::Action(action)),
+            KeybindResult::Action(action) => {
+                debug!("Console forwarding action to hub: {:?}", action);
+                Some(IoResult::Action(action))
+            }
             KeybindResult::Consumed => None,
-        }
+        };
+        debug!("Console io_result: {:?}", io_result);
+        io_result
     }
 
     fn apply_filter(&mut self, buf: &[u8]) -> Vec<u8> {
@@ -86,8 +93,10 @@ impl IoInstance for Console {
             Ok(0) => Ok(IoResult::None),
 
             Ok(n) => {
+                debug!("Console read {} bytes: {:02x?}", n, &tmp[..n]);
                 // Process through keybind processor
                 let results = self.keybind_processor.process(&tmp[..n]);
+                debug!("Keybind processor returned {} results", results.len());
 
                 // Store results in reverse order so we can pop from the end
                 for result in results.into_iter().rev() {
