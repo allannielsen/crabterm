@@ -180,6 +180,9 @@ impl IoHub {
             if self.device_write_blocked {
                 break;
             }
+            if self.quit_requested {
+                break;
+            }
         }
     }
 
