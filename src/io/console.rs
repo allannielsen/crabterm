@@ -24,6 +24,13 @@ impl Console {
 
         enable_raw_mode()?;
 
+        // mio uses edge-triggered epoll, so the fd must be non-blocking or
+        // read() will block the event loop when stdin has no more data.
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+            libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+
         let fd_ref: &'static i32 = Box::leak(Box::new(fd)); // convert to 'static lifetime
 
         Ok(Console {
