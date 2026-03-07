@@ -156,14 +156,24 @@ impl ConsoleTestHarness {
     }
 
     fn stop(&mut self) {
-        if self.is_running() {
-            let pid = self.crabterm.id() as i32;
-            unsafe {
-                libc::kill(pid, libc::SIGTERM);
-            }
-            std::thread::sleep(Duration::from_millis(100));
-            let _ = self.crabterm.wait();
+        if !self.is_running() {
+            return;
         }
+        let pid = self.crabterm.id() as i32;
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+
+        // Wait up to 1s for graceful exit, then force-kill.  When crabterm is
+        // stuck in a blocking read() signal_hook's SIGTERM handler fires but
+        // the read() is retried (EINTR), so the process never exits on its own.
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            if !self.is_running() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = self.crabterm.kill();
+        let _ = self.crabterm.wait();
     }
 }
 
@@ -314,4 +324,71 @@ async fn test_verbose_flag_enables_console_logging() {
     }
 
     tprintln!("Test passed: Verbose flags work correctly with proper line endings");
+}
+
+/// Reproduces the bug where stdin not being O_NONBLOCK caused Console::read()
+/// to block the mio event loop after consuming available input.
+///
+/// Steps:
+///   1. Send Enter (\r) via the console PTY — crabterm processes it and loops
+///      back to call stdin().read() again.
+///   2. Without O_NONBLOCK that second read() blocks the entire event loop.
+///   3. Send data from the device side.
+///   4. Without the fix the data never reaches the console because the event
+///      loop is stuck.  With the fix it arrives within a short timeout.
+#[tokio::test]
+#[serial_test::serial]
+async fn test_console_keypress_does_not_block_device_output() {
+    let mut harness = ConsoleTestHarness::start(LogLevel::Info).await;
+
+    assert!(harness.is_running(), "Crabterm should be running initially");
+
+    // Send Enter (\r) to simulate a user keypress.  After processing this,
+    // crabterm's drain_client loop iterates and calls stdin().read() again.
+    // Without O_NONBLOCK that call blocks the event loop.
+    tprintln!("Sending Enter key to console...");
+    write_fd(harness.console_master, b"\r").expect("Failed to write Enter to console");
+
+    // Give crabterm time to process the keypress and reach the blocking read.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Now have the device send data.  If the event loop is blocked the data
+    // will sit in the kernel buffer and never reach the console stdout.
+    tprintln!("Sending 'probe' from device...");
+    write_fd(harness.device_master, b"probe").expect("Failed to write to device");
+
+    // Set console_master to non-blocking so we can poll without blocking the test.
+    unsafe {
+        let flags = libc::fcntl(harness.console_master, libc::F_GETFL);
+        libc::fcntl(harness.console_master, libc::F_SETFL, flags | libc::O_NONBLOCK);
+    }
+
+    // Poll console_master for up to 500 ms.  Normal operation completes in
+    // well under 100 ms; the bug causes a multi-second stall.
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    let mut received = String::new();
+    let mut buf = [0u8; 256];
+    while std::time::Instant::now() < deadline {
+        match read_fd(harness.console_master, &mut buf) {
+            Ok(n) if n > 0 => {
+                received.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if received.contains("probe") {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    tprintln!("Console received: {:?}", received);
+
+    assert!(
+        received.contains("probe"),
+        "Timed out waiting for device data — event loop was blocked after keypress \
+         (stdin O_NONBLOCK bug). Received so far: {:?}",
+        received
+    );
+
+    tprintln!("Test passed: device output flows normally after a console keypress");
 }
