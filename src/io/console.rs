@@ -74,7 +74,7 @@ impl IoInstance for Console {
     }
 
     fn addr_as_string(&self) -> String {
-        "Console".to_owned()
+        "Local".to_owned()
     }
 
     fn connected(&self) -> bool {

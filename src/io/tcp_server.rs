@@ -74,7 +74,10 @@ impl IoInstance for TcpClient {
     }
 
     fn addr_as_string(&self) -> String {
-        self.addr.to_string()
+        self.stream
+            .local_addr()
+            .map(|a| a.to_string())
+            .unwrap_or_else(|_| self.addr.to_string())
     }
 
     fn disconnect(&mut self, poll: &mut Poll) {
