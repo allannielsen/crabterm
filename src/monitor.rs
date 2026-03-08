@@ -153,15 +153,15 @@ fn expand_template(template: &str, ctx: TemplateContext) -> String {
                     expanded.push_str(ctx.msg);
                     chars.next();
                 }
-                Some('d') => {
+                Some('s') => {
                     expanded.push_str(ctx.direction);
                     chars.next();
                 }
-                Some('D') => {
+                Some('S') => {
                     expanded.push_str(ctx.swap_direction);
                     chars.next();
                 }
-                Some('y') => {
+                Some('d') => {
                     expanded.push_str(&ctx.time.format("%Y-%m-%d").to_string());
                     chars.next();
                 }
@@ -206,8 +206,8 @@ mod tests {
     #[test]
     fn test_split_template() {
         assert_eq!(
-            split_template("[%t] %d: %m\n"),
-            ("[%t] %d: ".to_string(), "\n".to_string())
+            split_template("[%t] %s: %m\n"),
+            ("[%t] %s: ".to_string(), "\n".to_string())
         );
         assert_eq!(split_template("{%m}"), ("{".to_string(), "}".to_string()));
     }

@@ -367,7 +367,7 @@ fn main() -> std::io::Result<()> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
         })
-        .unwrap_or_else(|| "%d: %m\n".to_string());
+        .unwrap_or_else(|| "%s: %m\n".to_string());
 
     let monitor = if let Some(port) = monitor_port {
         raw_print!(

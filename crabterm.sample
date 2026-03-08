@@ -44,20 +44,20 @@ set announce-template "MSG-%s: %t %m\r\n"
 #   - Every direction change (RX <-> TX)
 #
 # Placeholders:
-#   %d - direction (RX/TX)
-#   %D - swapped direction (TX/RX)
+#   %s - (source) direction (RX/TX)
+#   %S - (source) swapped direction (TX/RX)
 #   %m - escaped message character
 #   %t - time when record started (hh:mm:ss)
-#   %y - date when record started (yyyy-mm-dd)
+#   %d - date when record started (yyyy-mm-dd)
 #   %% - literal '%'
 #
 # Examples:
 # set device-monitor-port 4001
-# set device-monitor-template "%d: %m\n"
-# set device-monitor-template "[%t] %d: %m\n"
+# set device-monitor-template "%s: %m\n"
+# set device-monitor-template "[%t] %s: %m\n"
 
 # set device-monitor-port 4001
-# set device-monitor-template "%d: %m\n"
+# set device-monitor-template "%s: %m\n"
 
 
 ## timestamp filter ############################################################

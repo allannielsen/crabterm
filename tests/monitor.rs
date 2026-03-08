@@ -20,7 +20,7 @@ async fn test_device_monitor_basic() {
         .arg("--device-monitor-port")
         .arg(monitor_port.to_string())
         .arg("--device-monitor-template")
-        .arg("%d: %m\n")
+        .arg("%s: %m\n")
         .arg("--log-file")
         .arg(&log_file)
         .arg("--headless");
@@ -64,7 +64,7 @@ async fn test_device_monitor_basic() {
     let mut monitor_received = String::new();
     let start = Instant::now();
 
-    // Using template: "%d: %m\n"
+    // Using template: "%s: %m\n"
     let expected = ["TX: hi\\n\n", "RX: hi\\n\n"];
 
     while start.elapsed() < Duration::from_secs(2) {
@@ -112,7 +112,7 @@ async fn test_device_monitor_escaping() {
         .arg("--device-monitor-port")
         .arg(monitor_port.to_string())
         .arg("--device-monitor-template")
-        .arg("%d: %m\n")
+        .arg("%s: %m\n")
         .arg("--log-file")
         .arg(&log_file)
         .arg("--headless");
