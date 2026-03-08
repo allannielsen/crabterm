@@ -128,13 +128,14 @@ impl IoInstance for TcpClient {
         }
     }
 
-    fn write_announce(&mut self, msg: &str) {
+    fn write_announce(&mut self, prefix: &str, postfix: &str, msg: &str) {
         let local_addr = self
             .stream
             .local_addr()
             .map(|a| a.to_string())
             .unwrap_or_else(|_| "unknown".to_string());
-        self.write_all(format!("{}: {}", local_addr, msg).as_bytes());
+        let full_msg = format!("{}{}: {}{}", prefix, local_addr, msg, postfix);
+        self.write_all(full_msg.as_bytes());
     }
 }
 

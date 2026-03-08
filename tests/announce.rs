@@ -42,11 +42,11 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received from crabterm: {}", received);
 
-    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
-    let expected_prefix = format!(":{}", crabterm_port);
+    // The announcement is sent from a TcpClient in the server.
+    // Default prefix is "MSG-" and since this is a device status it includes origin.
     assert!(
-        received.contains(&expected_prefix),
-        "Announcement should be prefixed with IP:PORT. Got: {}",
+        received.contains("MSG-127.0.0.1:"),
+        "Announcement should have MSG-IP:PORT prefix. Got: {}",
         received
     );
     assert!(
@@ -87,11 +87,10 @@ async fn test_client_receives_device_connected_hint() {
 
     tprintln!("Received: {}", received);
 
-    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
-    let expected_prefix = format!(":{}", crabterm_port);
+    // Should have MSG-IP:PORT prefix
     assert!(
-        received.contains(&expected_prefix),
-        "Announcement should be prefixed with IP:PORT. Got: {}",
+        received.contains("MSG-127.0.0.1:"),
+        "Announcement should have MSG-IP:PORT prefix. Got: {}",
         received
     );
     assert!(
@@ -139,16 +138,54 @@ async fn test_late_connecting_client_receives_last_error() {
 
     tprintln!("Late client received: {}", received);
 
-    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
-    let expected_prefix = format!(":{}", crabterm_port);
+    // Should have MSG-IP:PORT prefix
     assert!(
-        received.contains(&expected_prefix),
-        "Late announcement should be prefixed with IP:PORT. Got: {}",
+        received.contains("MSG-127.0.0.1:"),
+        "Announcement should have MSG-IP:PORT prefix. Got: {}",
         received
     );
     assert!(
         received.contains("No such file"),
         "Late client should receive the actual device error. Got: {}",
+        received
+    );
+
+    crabterm.stop();
+}
+
+#[tokio::test]
+async fn test_remote_announcement_prefix() {
+    let crabterm_port = find_available_port().await;
+
+    // Start crabterm with echo device
+    let mut crabterm = CrabtermProcess::builder()
+        .echo_device()
+        .listen(crabterm_port)
+        .no_announce(false)
+        .spawn();
+
+    assert!(
+        wait_for_port(crabterm_port, 2000).await,
+        "Crabterm server should start"
+    );
+
+    // Connect a client
+    let mut client =
+        TcpStream::connect(format!("127.0.0.1:{}", crabterm_port)).expect("Failed to connect");
+    client
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+
+    let mut buf = [0u8; 1024];
+    let n = client.read(&mut buf).expect("Failed to read");
+    let received = String::from_utf8_lossy(&buf[..n]);
+
+    tprintln!("Received: {}", received);
+
+    // Default prefix is "MSG-" and TcpClient adds "IP:PORT: "
+    assert!(
+        received.contains("MSG-127.0.0.1:"),
+        "Remote announcement should have MSG-IP:PORT prefix. Got: {}",
         received
     );
 

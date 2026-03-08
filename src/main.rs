@@ -257,9 +257,28 @@ fn main() -> std::io::Result<()> {
     info!("Starting crabterm");
     info!("Command line: {}", args.join(" "));
 
+    let config = KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned());
+    let announce_prefix = config
+        .settings
+        .get("announce-prefix")
+        .and_then(|v| v.as_str())
+        .unwrap_or("MSG-")
+        .to_string();
+    let announce_postfix = config
+        .settings
+        .get("announce-postfix")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     let mut server: Option<TcpServer> = None;
     if let Some(port) = matches.get_one::<u16>("port") {
-        raw_println!("Listning at port: {}", port);
+        raw_println!(
+            "{}Local: Listning at port: {}{}",
+            announce_prefix,
+            port,
+            announce_postfix
+        );
         server = Some(TcpServer::new(*port)?);
     }
 
@@ -275,14 +294,19 @@ fn main() -> std::io::Result<()> {
                 Box::new(client)
             }
             DeviceMode::Tcp(addr) => {
-                raw_println!("TCP device: {}", addr);
+                raw_println!(
+                    "{}Local: TCP device: {}{}",
+                    announce_prefix,
+                    addr,
+                    announce_postfix
+                );
 
                 let addr: SocketAddr = addr.parse().unwrap();
                 let client = TcpDevice::new(addr)?;
                 Box::new(client)
             }
             DeviceMode::Echo() => {
-                raw_println!("Echo mode");
+                raw_println!("{}Local: Echo mode{}", announce_prefix, announce_postfix);
                 Box::new(EchoDevice::new()?)
             }
         }
@@ -293,15 +317,18 @@ fn main() -> std::io::Result<()> {
     let headless = matches.get_flag("headless");
 
     if headless && server.is_none() {
-        raw_println!("Error: --headless requires -p/--port option");
+        raw_println!(
+            "{}Local: Error: --headless requires -p/--port option{}",
+            announce_prefix,
+            announce_postfix
+        );
         std::process::exit(1);
     }
 
     let announce = !matches.get_flag("no-announce");
-    let mut hub = IoHub::new(device, server, announce)?;
+    let mut hub = IoHub::new(device, server, announce, announce_prefix, announce_postfix)?;
 
     if !headless {
-        let config = KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned());
         let filter_chain = FilterChain::new(&config.settings);
         let console = Console::new(config, filter_chain)?;
         hub.add(Box::new(console))?;

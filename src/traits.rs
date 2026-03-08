@@ -63,8 +63,9 @@ pub trait IoInstance {
     }
 
     /// Write an announcement message. Default implementation uses `write_all`.
-    fn write_announce(&mut self, msg: &str) {
-        self.write_all(msg.as_bytes());
+    fn write_announce(&mut self, prefix: &str, postfix: &str, msg: &str) {
+        let full_msg = format!("{}{}{}", prefix, msg, postfix);
+        self.write_all(full_msg.as_bytes());
     }
 
     /// Request WRITABLE interest from the poll loop so that the caller is

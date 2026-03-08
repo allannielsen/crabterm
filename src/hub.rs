@@ -40,6 +40,12 @@ pub struct IoHub {
 
     /// Last status message for the device (e.g. Connected or Error)
     last_device_status_msg: Option<String>,
+
+    /// Prefix for announcements (e.g. "MSG-")
+    announce_prefix: String,
+
+    /// Postfix for announcements (e.g. "}")
+    announce_postfix: String,
 }
 
 impl IoHub {
@@ -47,6 +53,8 @@ impl IoHub {
         device: Box<dyn IoInstance>,
         server: Option<TcpServer>,
         announce: bool,
+        announce_prefix: String,
+        announce_postfix: String,
     ) -> Result<Self> {
         let mut signals = Signals::new([SIGINT, SIGTERM])?;
         let poll = Poll::new()?;
@@ -65,6 +73,8 @@ impl IoHub {
             device_write_blocked: false,
             pending_device_write: Vec::new(),
             last_device_status_msg: None,
+            announce_prefix,
+            announce_postfix,
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -103,17 +113,22 @@ impl IoHub {
             && let Some(msg) = &self.last_device_status_msg
             && let Some(client) = self.instances.get_mut(&token)
         {
-            client.write_announce(msg);
+            client.write_announce(&self.announce_prefix, &self.announce_postfix, msg);
         }
 
         Ok(())
     }
 
     fn all_clients_str(&mut self, msg: String) {
+        let prefix = format!("{}Local: ", self.announce_prefix);
+        self.all_clients_announce(&prefix, &msg);
+    }
+
+    fn all_clients_announce(&mut self, prefix: &str, msg: &str) {
         info!("Announce: {}", msg.trim());
         if self.announce {
             for (_, client) in self.instances.iter_mut() {
-                client.write_announce(&msg);
+                client.write_announce(prefix, &self.announce_postfix, msg);
             }
         }
     }
@@ -378,18 +393,15 @@ impl IoHub {
                         None
                     }
 
-                    Err(e) => Some(format!(
-                        "{}: {}\n\r",
-                        self.device.addr_as_string(),
-                        e
-                    )),
+                    Err(e) => Some(format!("{}: {}\n\r", self.device.addr_as_string(), e)),
                 };
 
                 if let Some(msg) = status_msg
                     && Some(&msg) != self.last_device_status_msg.as_ref()
                 {
                     self.last_device_status_msg = Some(msg.clone());
-                    self.all_clients_str(msg);
+                    let prefix = self.announce_prefix.clone();
+                    self.all_clients_announce(&prefix, &msg);
                 }
             }
 
