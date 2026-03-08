@@ -63,9 +63,9 @@ pub trait IoInstance {
     }
 
     /// Write an announcement message using a template.
-    /// %m -> message, %t -> time(hh:mm:ss), %d -> date(yyyy-mm-dd), %% -> %
-    fn write_announce(&mut self, template: &str, msg: &str) {
-        let expanded = crate::announce::expand_template(template, msg);
+    /// %m -> message, %s -> source, %t -> time(hh:mm:ss), %d -> date(yyyy-mm-dd), %% -> %
+    fn write_announce(&mut self, template: &str, source: &str, msg: &str) {
+        let expanded = crate::announce::expand_template(template, source, msg);
         self.write_all(expanded.as_bytes());
     }
 

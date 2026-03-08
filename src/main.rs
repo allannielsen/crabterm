@@ -264,7 +264,7 @@ fn main() -> std::io::Result<()> {
         .settings
         .get("announce-template")
         .and_then(|v| v.as_str())
-        .unwrap_or("MSG-%m")
+        .unwrap_or("MSG-%s: %m")
         .to_string();
 
     let mut server: Option<TcpServer> = None;
@@ -273,7 +273,8 @@ fn main() -> std::io::Result<()> {
             "{}",
             expand_template(
                 &announce_template,
-                &format!("Local: Listning at port: {}", port)
+                "Local",
+                &format!("Listning at port: {}", port)
             )
         );
         server = Some(TcpServer::new(*port)?);
@@ -293,7 +294,11 @@ fn main() -> std::io::Result<()> {
             DeviceMode::Tcp(addr) => {
                 raw_println!(
                     "{}",
-                    expand_template(&announce_template, &format!("Local: TCP device: {}", addr))
+                    expand_template(
+                        &announce_template,
+                        "Local",
+                        &format!("TCP device: {}", addr)
+                    )
                 );
 
                 let addr: SocketAddr = addr.parse().unwrap();
@@ -303,7 +308,7 @@ fn main() -> std::io::Result<()> {
             DeviceMode::Echo() => {
                 raw_println!(
                     "{}",
-                    expand_template(&announce_template, "Local: Echo mode")
+                    expand_template(&announce_template, "Local", "Echo mode")
                 );
                 Box::new(EchoDevice::new()?)
             }
@@ -319,7 +324,8 @@ fn main() -> std::io::Result<()> {
             "{}",
             expand_template(
                 &announce_template,
-                "Local: Error: --headless requires -p/--port option"
+                "Local",
+                "Error: --headless requires -p/--port option"
             )
         );
         std::process::exit(1);

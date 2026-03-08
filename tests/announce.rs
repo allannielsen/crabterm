@@ -36,6 +36,8 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received: {}", received);
 
+    // Default template: MSG-%s: %m
+    // Source should be the local address of the client connection on the server
     assert!(
         received.contains("MSG-127.0.0.1:"),
         "Announcement should have MSG-IP:PORT prefix. Got: {}",
@@ -138,11 +140,6 @@ async fn test_late_connecting_client_receives_last_error() {
 async fn test_custom_template() {
     let crabterm_port = find_available_port().await;
 
-    // We can't easily set a config file for CrabtermProcess builder currently
-    // but we can check if the default MSG-%m works which we already do.
-    // To test custom template we would need to pass it via config.
-
-    // For now, let's just ensure the current default logic is solid.
     let mut crabterm = CrabtermProcess::builder()
         .echo_device()
         .listen(crabterm_port)
@@ -166,6 +163,7 @@ async fn test_custom_template() {
 
     tprintln!("Received: {}", received);
 
+    // Default template: MSG-%s: %m
     assert!(
         received.starts_with("MSG-127.0.0.1:"),
         "Should start with default template MSG- and origin. Got: {}",

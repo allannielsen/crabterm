@@ -1,4 +1,4 @@
-pub fn expand_template(template: &str, msg: &str) -> String {
+pub fn expand_template(template: &str, source: &str, msg: &str) -> String {
     let now = chrono::Local::now();
     let mut expanded = String::new();
     let mut chars = template.chars().peekable();
@@ -12,6 +12,10 @@ pub fn expand_template(template: &str, msg: &str) -> String {
                 }
                 Some('m') => {
                     expanded.push_str(msg);
+                    chars.next();
+                }
+                Some('s') => {
+                    expanded.push_str(source);
                     chars.next();
                 }
                 Some('t') => {

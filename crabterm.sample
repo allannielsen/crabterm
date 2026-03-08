@@ -23,16 +23,17 @@ map-prefix c filter-toggle charmap
 # Configure the format of announcements (device status, new clients, etc.)
 # Placeholders:
 #   %m - message
+#   %s - source (e.g. "Local" or "127.0.0.1:4000")
 #   %t - time (hh:mm:ss)
 #   %d - date (yyyy-mm-dd)
 #   %% - literal '%'
 #
 # Examples:
-# set announce-template "MSG-%m"
-# set announce-template "{%t} %m"
-# set announce-template "[%d %t] %m"
+# set announce-template "MSG-%s: %m"
+# set announce-template "{%t} [%s] %m"
+# set announce-template "[%d %t] %s: %m"
 
-set announce-template "MSG-%m"
+set announce-template "MSG-%s: %m"
 
 
 ## timestamp filter ############################################################

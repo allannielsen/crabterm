@@ -108,8 +108,7 @@ impl IoHub {
             && let Some(msg) = &self.last_device_status_msg
             && let Some(client) = self.instances.get_mut(&token)
         {
-            let origin_msg = format!("{}: {}", client.addr_as_string(), msg);
-            client.write_announce(&self.announce_template, &origin_msg);
+            client.write_announce(&self.announce_template, &client.addr_as_string(), msg);
         }
 
         Ok(())
@@ -123,8 +122,7 @@ impl IoHub {
         info!("Announce: {}", msg.trim());
         if self.announce {
             for (_, client) in self.instances.iter_mut() {
-                let origin_msg = format!("{}: {}", client.addr_as_string(), msg);
-                client.write_announce(&self.announce_template, &origin_msg);
+                client.write_announce(&self.announce_template, &client.addr_as_string(), msg);
             }
         }
     }
