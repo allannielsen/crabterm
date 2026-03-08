@@ -36,11 +36,17 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received: {}", received);
 
-    // Default template: MSG-%s: %m
-    // Source should be the local address of the client connection on the server
+    // Default template: MSG-%s: %t %m
     assert!(
         received.contains("MSG-127.0.0.1:"),
         "Announcement should have MSG-IP:PORT prefix. Got: {}",
+        received
+    );
+    // Check for HH:MM:SS timestamp format
+    let has_timestamp = received.chars().filter(|&c| c == ':').count() >= 4;
+    assert!(
+        has_timestamp,
+        "Announcement should contain a timestamp (HH:MM:SS). Got: {}",
         received
     );
     assert!(
@@ -163,7 +169,7 @@ async fn test_custom_template() {
 
     tprintln!("Received: {}", received);
 
-    // Default template: MSG-%s: %m
+    // Default template: MSG-%s: %t %m
     assert!(
         received.starts_with("MSG-127.0.0.1:"),
         "Should start with default template MSG- and origin. Got: {}",
