@@ -19,6 +19,22 @@ map-prefix t filter-toggle timestamp
 map-prefix c filter-toggle charmap
 
 
+## Announcements ###############################################################
+# Configure the format of announcements (device status, new clients, etc.)
+# Placeholders:
+#   %m - message
+#   %t - time (hh:mm:ss)
+#   %d - date (yyyy-mm-dd)
+#   %% - literal '%'
+#
+# Examples:
+# set announce-template "MSG-%m"
+# set announce-template "{%t} %m"
+# set announce-template "[%d %t] %m"
+
+set announce-template "MSG-%m"
+
+
 ## timestamp filter ############################################################
 # Configure the timestamp filter (notice, filter must be enabled to have any
 # effect)

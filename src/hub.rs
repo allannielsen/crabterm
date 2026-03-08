@@ -41,11 +41,8 @@ pub struct IoHub {
     /// Last status message for the device (e.g. Connected or Error)
     last_device_status_msg: Option<String>,
 
-    /// Prefix for announcements (e.g. "MSG-")
-    announce_prefix: String,
-
-    /// Postfix for announcements (e.g. "}")
-    announce_postfix: String,
+    /// Template for announcements (e.g. "MSG-%m")
+    announce_template: String,
 }
 
 impl IoHub {
@@ -53,8 +50,7 @@ impl IoHub {
         device: Box<dyn IoInstance>,
         server: Option<TcpServer>,
         announce: bool,
-        announce_prefix: String,
-        announce_postfix: String,
+        announce_template: String,
     ) -> Result<Self> {
         let mut signals = Signals::new([SIGINT, SIGTERM])?;
         let poll = Poll::new()?;
@@ -73,8 +69,7 @@ impl IoHub {
             device_write_blocked: false,
             pending_device_write: Vec::new(),
             last_device_status_msg: None,
-            announce_prefix,
-            announce_postfix,
+            announce_template,
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -113,22 +108,23 @@ impl IoHub {
             && let Some(msg) = &self.last_device_status_msg
             && let Some(client) = self.instances.get_mut(&token)
         {
-            client.write_announce(&self.announce_prefix, &self.announce_postfix, msg);
+            let origin_msg = format!("{}: {}", client.addr_as_string(), msg);
+            client.write_announce(&self.announce_template, &origin_msg);
         }
 
         Ok(())
     }
 
     fn all_clients_str(&mut self, msg: String) {
-        let prefix = format!("{}Local: ", self.announce_prefix);
-        self.all_clients_announce(&prefix, &msg);
+        self.all_clients_announce(&msg);
     }
 
-    fn all_clients_announce(&mut self, prefix: &str, msg: &str) {
+    fn all_clients_announce(&mut self, msg: &str) {
         info!("Announce: {}", msg.trim());
         if self.announce {
             for (_, client) in self.instances.iter_mut() {
-                client.write_announce(prefix, &self.announce_postfix, msg);
+                let origin_msg = format!("{}: {}", client.addr_as_string(), msg);
+                client.write_announce(&self.announce_template, &origin_msg);
             }
         }
     }
@@ -400,8 +396,7 @@ impl IoHub {
                     && Some(&msg) != self.last_device_status_msg.as_ref()
                 {
                     self.last_device_status_msg = Some(msg.clone());
-                    let prefix = self.announce_prefix.clone();
-                    self.all_clients_announce(&prefix, &msg);
+                    self.all_clients_announce(&msg);
                 }
             }
 

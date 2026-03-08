@@ -106,6 +106,39 @@ fn parse_device(val: &str) -> Result<DeviceMode, String> {
     ))
 }
 
+fn expand_template(template: &str, msg: &str) -> String {
+    let now = chrono::Local::now();
+    let mut expanded = String::new();
+    let mut chars = template.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            match chars.peek() {
+                Some('%') => {
+                    expanded.push('%');
+                    chars.next();
+                }
+                Some('m') => {
+                    expanded.push_str(msg);
+                    chars.next();
+                }
+                Some('t') => {
+                    expanded.push_str(&now.format("%H:%M:%S").to_string());
+                    chars.next();
+                }
+                Some('d') => {
+                    expanded.push_str(&now.format("%Y-%m-%d").to_string());
+                    chars.next();
+                }
+                _ => expanded.push('%'),
+            }
+        } else {
+            expanded.push(c);
+        }
+    }
+    expanded
+}
+
 fn main() -> std::io::Result<()> {
     panic::set_hook(Box::new(|info| {
         // Attempt to restore terminal
@@ -258,26 +291,21 @@ fn main() -> std::io::Result<()> {
     info!("Command line: {}", args.join(" "));
 
     let config = KeybindConfig::load(matches.get_one::<PathBuf>("config").cloned());
-    let announce_prefix = config
+    let announce_template = config
         .settings
-        .get("announce-prefix")
+        .get("announce-template")
         .and_then(|v| v.as_str())
-        .unwrap_or("MSG-")
-        .to_string();
-    let announce_postfix = config
-        .settings
-        .get("announce-postfix")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
+        .unwrap_or("MSG-%m")
         .to_string();
 
     let mut server: Option<TcpServer> = None;
     if let Some(port) = matches.get_one::<u16>("port") {
         raw_println!(
-            "{}Local: Listning at port: {}{}",
-            announce_prefix,
-            port,
-            announce_postfix
+            "{}",
+            expand_template(
+                &announce_template,
+                &format!("Local: Listning at port: {}", port)
+            )
         );
         server = Some(TcpServer::new(*port)?);
     }
@@ -295,10 +323,8 @@ fn main() -> std::io::Result<()> {
             }
             DeviceMode::Tcp(addr) => {
                 raw_println!(
-                    "{}Local: TCP device: {}{}",
-                    announce_prefix,
-                    addr,
-                    announce_postfix
+                    "{}",
+                    expand_template(&announce_template, &format!("Local: TCP device: {}", addr))
                 );
 
                 let addr: SocketAddr = addr.parse().unwrap();
@@ -306,7 +332,10 @@ fn main() -> std::io::Result<()> {
                 Box::new(client)
             }
             DeviceMode::Echo() => {
-                raw_println!("{}Local: Echo mode{}", announce_prefix, announce_postfix);
+                raw_println!(
+                    "{}",
+                    expand_template(&announce_template, "Local: Echo mode")
+                );
                 Box::new(EchoDevice::new()?)
             }
         }
@@ -318,15 +347,17 @@ fn main() -> std::io::Result<()> {
 
     if headless && server.is_none() {
         raw_println!(
-            "{}Local: Error: --headless requires -p/--port option{}",
-            announce_prefix,
-            announce_postfix
+            "{}",
+            expand_template(
+                &announce_template,
+                "Local: Error: --headless requires -p/--port option"
+            )
         );
         std::process::exit(1);
     }
 
     let announce = !matches.get_flag("no-announce");
-    let mut hub = IoHub::new(device, server, announce, announce_prefix, announce_postfix)?;
+    let mut hub = IoHub::new(device, server, announce, announce_template)?;
 
     if !headless {
         let filter_chain = FilterChain::new(&config.settings);
