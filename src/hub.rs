@@ -289,11 +289,9 @@ impl IoHub {
                     Ok(IoResult::None) => break,
                     Ok(IoResult::Action(_)) => {}
                     Err(e) => {
-                        self.all_clients_str(format!(
-                            "{}: {}\n\r",
-                            self.device.addr_as_string(),
-                            e
-                        ));
+                        let msg = format!("{}: {}\n\r", self.device.addr_as_string(), e);
+                        self.last_device_status_msg = Some(msg.clone());
+                        self.all_clients_str(msg);
                         break;
                     }
                 }
@@ -372,10 +370,7 @@ impl IoHub {
                 let status_msg = match self.device.connect(&mut self.poll, TOKEN_DEV) {
                     Ok(()) => {
                         self.device_write_blocked = false;
-                        Some(format!(
-                            "{}: Connected\n\r",
-                            self.device.addr_as_string()
-                        ))
+                        self.device.connected_announcement()
                     }
 
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {

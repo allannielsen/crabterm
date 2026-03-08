@@ -35,6 +35,12 @@ pub trait IoInstance {
 
     fn addr_as_string(&self) -> String;
 
+    /// Return an announcement message to be sent to clients when the device
+    /// connects. Default is "address: Connected".
+    fn connected_announcement(&self) -> Option<String> {
+        Some(format!("{}: Connected\n\r", self.addr_as_string()))
+    }
+
     /// Called periodically to handle timeouts etc.
     fn tick(&mut self) -> Result<IoResult> {
         Ok(IoResult::None)

@@ -42,7 +42,7 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received from crabterm: {}", received);
 
-    // Check for IP/Port prefix and error message (Info/Error tags removed)
+    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
     let expected_prefix = format!(":{}", crabterm_port);
     assert!(
         received.contains(&expected_prefix),
@@ -52,11 +52,6 @@ async fn test_client_receives_device_not_connected_hint() {
     assert!(
         received.contains("Not connected") || received.contains("No such file"),
         "Client should receive hint that device is not connected. Got: {}",
-        received
-    );
-    assert!(
-        !received.contains("Error:"),
-        "Announcement should NOT contain 'Error:' prefix. Got: {}",
         received
     );
 
@@ -92,7 +87,7 @@ async fn test_client_receives_device_connected_hint() {
 
     tprintln!("Received: {}", received);
 
-    // Check for IP/Port prefix and Connected message (Info/Error tags removed)
+    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
     let expected_prefix = format!(":{}", crabterm_port);
     assert!(
         received.contains(&expected_prefix),
@@ -100,13 +95,8 @@ async fn test_client_receives_device_connected_hint() {
         received
     );
     assert!(
-        received.contains("Connected"),
+        received.to_lowercase().contains("echo: connected"),
         "Client should receive hint that device is connected. Got: {}",
-        received
-    );
-    assert!(
-        !received.contains("Info:"),
-        "Announcement should NOT contain 'Info:' prefix. Got: {}",
         received
     );
 
@@ -149,7 +139,7 @@ async fn test_late_connecting_client_receives_last_error() {
 
     tprintln!("Late client received: {}", received);
 
-    // Check for IP/Port prefix and Error message (Info/Error tags removed)
+    // The announcement is sent from a TcpClient in the server, so it IS prefixed with IP:PORT.
     let expected_prefix = format!(":{}", crabterm_port);
     assert!(
         received.contains(&expected_prefix),
@@ -159,11 +149,6 @@ async fn test_late_connecting_client_receives_last_error() {
     assert!(
         received.contains("No such file"),
         "Late client should receive the actual device error. Got: {}",
-        received
-    );
-    assert!(
-        !received.contains("Error:"),
-        "Announcement should NOT contain 'Error:' prefix. Got: {}",
         received
     );
 

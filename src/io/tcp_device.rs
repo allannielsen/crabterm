@@ -77,6 +77,13 @@ impl IoInstance for TcpDevice {
         self.addr.to_string()
     }
 
+    fn connected_announcement(&self) -> Option<String> {
+        // TCP device connection is a transport link.  We avoid the "Connected"
+        // message to reduce redundancy, especially when connecting to another
+        // terminal hub that will send its own device status announcement.
+        None
+    }
+
     fn connected(&self) -> bool {
         self.stream.is_some() && !self.connecting
     }
