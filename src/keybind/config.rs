@@ -169,11 +169,18 @@ impl KeybindConfig {
             }
             "set" => {
                 let name = parts.next_word().ok_or("Missing setting name")?;
-                let value_str = parts.next_word().ok_or("Missing setting value")?;
-                let value = match value_str.to_lowercase().as_str() {
-                    "on" | "true" | "yes" | "1" => SettingValue::Bool(true),
-                    "off" | "false" | "no" | "0" => SettingValue::Bool(false),
-                    _ => SettingValue::String(value_str.to_string()),
+                let value = if let Some(quoted) = parts.next_quoted_string() {
+                    SettingValue::String(quoted)
+                } else {
+                    let value_str = parts.rest();
+                    if value_str.is_empty() {
+                        return Err("Missing setting value".to_string());
+                    }
+                    match value_str.to_lowercase().as_str() {
+                        "on" | "true" | "yes" | "1" => SettingValue::Bool(true),
+                        "off" | "false" | "no" | "0" => SettingValue::Bool(false),
+                        _ => SettingValue::String(value_str.to_string()),
+                    }
                 };
                 self.settings.insert(name.to_string(), value);
             }
@@ -448,5 +455,25 @@ mod tests {
         let key = parse_key_event("Alt+F1").unwrap();
         assert!(key.modifiers.alt);
         assert_eq!(key.key, Key::F(1));
+    }
+
+    #[test]
+    fn test_parse_quoted_setting() {
+        let config = KeybindConfig::parse(
+            r#"
+            set announce-template "MSG-%s: %t %m"
+            set other-setting value
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.settings.get("announce-template"),
+            Some(&SettingValue::String("MSG-%s: %t %m".to_string()))
+        );
+        assert_eq!(
+            config.settings.get("other-setting"),
+            Some(&SettingValue::String("value".to_string()))
+        );
     }
 }
