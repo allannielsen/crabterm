@@ -36,7 +36,7 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received: {}", received);
 
-    // Default template: MSG-%s: %t %m
+    // Default template: MSG-%s: %t %m\r\n
     assert!(
         received.contains("MSG-127.0.0.1:"),
         "Announcement should have MSG-IP:PORT prefix. Got: {}",
@@ -52,6 +52,11 @@ async fn test_client_receives_device_not_connected_hint() {
     assert!(
         received.contains("Not connected") || received.contains("No such file"),
         "Client should receive hint that device is not connected. Got: {}",
+        received
+    );
+    assert!(
+        received.ends_with("\r\n"),
+        "Announcement should end with \\r\\n. Got: {:?}",
         received
     );
 
@@ -93,6 +98,11 @@ async fn test_client_receives_device_connected_hint() {
     assert!(
         received.to_lowercase().contains("echo: connected"),
         "Client should receive hint that device is connected. Got: {}",
+        received
+    );
+    assert!(
+        received.ends_with("\r\n"),
+        "Announcement should end with \\r\\n. Got: {:?}",
         received
     );
 
@@ -138,6 +148,11 @@ async fn test_late_connecting_client_receives_last_error() {
         "Late client should receive the actual device error. Got: {}",
         received
     );
+    assert!(
+        received.ends_with("\r\n"),
+        "Announcement should end with \\r\\n. Got: {:?}",
+        received
+    );
 
     crabterm.stop();
 }
@@ -169,10 +184,15 @@ async fn test_custom_template() {
 
     tprintln!("Received: {}", received);
 
-    // Default template: MSG-%s: %t %m
+    // Default template: MSG-%s: %t %m\r\n
     assert!(
         received.starts_with("MSG-127.0.0.1:"),
         "Should start with default template MSG- and origin. Got: {}",
+        received
+    );
+    assert!(
+        received.ends_with("\r\n"),
+        "Announcement should end with \\r\\n. Got: {:?}",
         received
     );
 

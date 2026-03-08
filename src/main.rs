@@ -264,7 +264,7 @@ fn main() -> std::io::Result<()> {
         .settings
         .get("announce-template")
         .and_then(|v| v.as_str())
-        .unwrap_or("MSG-%s: %t %m")
+        .unwrap_or("MSG-%s: %t %m\r\n")
         .to_string();
 
     let mut server: Option<TcpServer> = None;

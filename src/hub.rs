@@ -298,7 +298,7 @@ impl IoHub {
                     Ok(IoResult::None) => break,
                     Ok(IoResult::Action(_)) => {}
                     Err(e) => {
-                        let msg = format!("{}: {}\n\r", self.device.addr_as_string(), e);
+                        let msg = format!("{}: {}", self.device.addr_as_string(), e);
                         self.last_device_status_msg = Some(msg.clone());
                         self.all_clients_str(msg);
                         break;
@@ -387,7 +387,7 @@ impl IoHub {
                         None
                     }
 
-                    Err(e) => Some(format!("{}: {}\n\r", self.device.addr_as_string(), e)),
+                    Err(e) => Some(format!("{}: {}", self.device.addr_as_string(), e)),
                 };
 
                 if let Some(msg) = status_msg

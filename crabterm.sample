@@ -29,11 +29,11 @@ map-prefix c filter-toggle charmap
 #   %% - literal '%'
 #
 # Examples:
-# set announce-template "MSG-%s: %t %m"
-# set announce-template "{%t} [%s] %m"
-# set announce-template "[%d %t] %s: %m"
+# set announce-template "MSG-%s: %t %m\r\n"
+# set announce-template "{%t} [%s] %m\r\n"
+# set announce-template "[%d %t] %s: %m\r\n"
 
-set announce-template "MSG-%s: %t %m"
+set announce-template "MSG-%s: %t %m\r\n"
 
 
 ## timestamp filter ############################################################
