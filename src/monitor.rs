@@ -33,6 +33,7 @@ pub struct DeviceMonitor {
     current_direction: Option<MonitorDirection>,
     record_start_time: Option<chrono::DateTime<Local>>,
     token_start: usize,
+    record_active: bool,
 }
 
 impl DeviceMonitor {
@@ -44,6 +45,7 @@ impl DeviceMonitor {
             current_direction: None,
             record_start_time: None,
             token_start,
+            record_active: false,
         })
     }
 
@@ -54,9 +56,6 @@ impl DeviceMonitor {
     pub fn accept(&mut self, poll: &mut Poll) -> std::io::Result<()> {
         while let Some(mut client) = self.server.accept() {
             let token = Token(self.token_start + self.clients.len());
-            // In a real implementation we would need a better token management for monitor clients
-            // but for now let's use a simplified approach if it's acceptable.
-            // Actually, Hub should manage these tokens.
             client.connect(poll, token)?;
             self.clients.insert(token, client);
         }
@@ -72,34 +71,54 @@ impl DeviceMonitor {
     }
 
     fn process_data(&mut self, dir: MonitorDirection, data: &[u8]) {
+        let (prefix_template, postfix_template) = split_template(&self.template);
+
         for &b in data {
-            let needs_new_record = self.current_direction != Some(dir);
-            if needs_new_record {
+            let direction_changed = self.current_direction != Some(dir);
+
+            if !self.record_active || direction_changed {
+                if self.record_active && direction_changed {
+                    // Close previous record if direction changed before a newline
+                    let ctx = self.make_context("", self.current_direction.unwrap());
+                    let postfix = expand_template(&postfix_template, ctx);
+                    self.broadcast(&postfix);
+                }
+
                 self.current_direction = Some(dir);
                 self.record_start_time = Some(Local::now());
-                // When direction changes, we start fresh.
-                // Any pending template prefix will be handled by expand_template called per-char or per-chunk.
+                self.record_active = true;
+
+                let ctx = self.make_context("", dir);
+                let prefix = expand_template(&prefix_template, ctx);
+                self.broadcast(&prefix);
             }
 
             let escaped = escape_char(b);
-            let context = TemplateContext {
-                direction: dir.as_str(),
-                swap_direction: dir.swapped_str(),
-                msg: &escaped,
-                time: self.record_start_time.unwrap_or_else(Local::now),
-            };
-
-            let formatted = expand_template(&self.template, context);
-            self.broadcast(&formatted);
+            self.broadcast(&escaped);
 
             if b == b'\n' {
-                // Next char starts a new record
+                let ctx = self.make_context("", dir);
+                let postfix = expand_template(&postfix_template, ctx);
+                self.broadcast(&postfix);
+                self.record_active = false;
                 self.current_direction = None;
             }
         }
     }
 
+    fn make_context<'a>(&self, msg: &'a str, dir: MonitorDirection) -> TemplateContext<'a> {
+        TemplateContext {
+            direction: dir.as_str(),
+            swap_direction: dir.swapped_str(),
+            msg,
+            time: self.record_start_time.unwrap_or_else(Local::now),
+        }
+    }
+
     fn broadcast(&mut self, msg: &str) {
+        if msg.is_empty() {
+            return;
+        }
         let mut disconnected = Vec::new();
         for (token, client) in self.clients.iter_mut() {
             if client.write_all(msg.as_bytes()) == 0 {
@@ -159,6 +178,16 @@ fn expand_template(template: &str, ctx: TemplateContext) -> String {
     expanded
 }
 
+fn split_template(template: &str) -> (String, String) {
+    if let Some(idx) = template.find("%m") {
+        let prefix = &template[..idx];
+        let postfix = &template[idx + 2..];
+        (prefix.to_string(), postfix.to_string())
+    } else {
+        (template.to_string(), String::new())
+    }
+}
+
 fn escape_char(c: u8) -> String {
     match c {
         b'\n' => "\\n".to_string(),
@@ -167,5 +196,26 @@ fn escape_char(c: u8) -> String {
         b'\\' => "\\\\".to_string(),
         0x20..=0x7e => (c as char).to_string(),
         _ => format!("\\x{:02x}", c),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_template() {
+        assert_eq!(
+            split_template("[%t] %d: %m\n"),
+            ("[%t] %d: ".to_string(), "\n".to_string())
+        );
+        assert_eq!(split_template("{%m}"), ("{".to_string(), "}".to_string()));
+    }
+
+    #[test]
+    fn test_escape_char() {
+        assert_eq!(escape_char(b'a'), "a");
+        assert_eq!(escape_char(b'\n'), "\\n");
+        assert_eq!(escape_char(0x01), "\\x01");
     }
 }

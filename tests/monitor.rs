@@ -19,6 +19,8 @@ async fn test_device_monitor_basic() {
         .arg(crabterm_port.to_string())
         .arg("--device-monitor-port")
         .arg(monitor_port.to_string())
+        .arg("--device-monitor-template")
+        .arg("%d: %m\n")
         .arg("--log-file")
         .arg(&log_file)
         .arg("--headless");
@@ -61,7 +63,9 @@ async fn test_device_monitor_basic() {
 
     let mut monitor_received = String::new();
     let start = Instant::now();
-    let expected = ["TX: h", "TX: i", "TX: \\n", "RX: h", "RX: i", "RX: \\n"];
+
+    // Using template: "%d: %m\n"
+    let expected = ["TX: hi\\n\n", "RX: hi\\n\n"];
 
     while start.elapsed() < Duration::from_secs(2) {
         let n = match monitor.read(&mut buf) {
@@ -82,7 +86,7 @@ async fn test_device_monitor_basic() {
     for s in expected.iter() {
         assert!(
             monitor_received.contains(s),
-            "Should contain {}. Got: {:?}",
+            "Should contain {:?}. Got: {:?}",
             s,
             monitor_received
         );
@@ -107,6 +111,8 @@ async fn test_device_monitor_escaping() {
         .arg(crabterm_port.to_string())
         .arg("--device-monitor-port")
         .arg(monitor_port.to_string())
+        .arg("--device-monitor-template")
+        .arg("%d: %m\n")
         .arg("--log-file")
         .arg(&log_file)
         .arg("--headless");
@@ -132,7 +138,7 @@ async fn test_device_monitor_escaping() {
     let mut monitor_received = String::new();
     let mut buf = [0u8; 1024];
     let start = Instant::now();
-    let expected = ["\\x01", "\\r", "\\t", "\\\\"];
+    let expected = ["TX: \\x01\\r\\t\\\\", "RX: \\x01\\r\\t\\\\"];
 
     while start.elapsed() < Duration::from_secs(2) {
         let n = match monitor.read(&mut buf) {
@@ -153,7 +159,7 @@ async fn test_device_monitor_escaping() {
     for s in expected.iter() {
         assert!(
             monitor_received.contains(s),
-            "Should contain {}. Got: {:?}",
+            "Should contain {:?}. Got: {:?}",
             s,
             monitor_received
         );
