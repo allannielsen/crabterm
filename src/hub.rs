@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use crate::io::TcpServer;
 use crate::keybind::Action;
-use crate::traits::{IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER, TOKEN_SIGNAL};
+use crate::traits::{
+    IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER, TOKEN_SIGNAL,
+};
 
 pub struct IoHub {
     poll: Poll,
@@ -35,10 +37,17 @@ pub struct IoHub {
     /// Bytes that could not be written to the device during a partial write.
     /// Flushed first when the device becomes writable again.
     pending_device_write: Vec<u8>,
+
+    /// Last status message for the device (e.g. Connected or Error)
+    last_device_status_msg: Option<String>,
 }
 
 impl IoHub {
-    pub fn new(device: Box<dyn IoInstance>, server: Option<TcpServer>, announce: bool) -> Result<Self> {
+    pub fn new(
+        device: Box<dyn IoInstance>,
+        server: Option<TcpServer>,
+        announce: bool,
+    ) -> Result<Self> {
         let mut signals = Signals::new([SIGINT, SIGTERM])?;
         let poll = Poll::new()?;
 
@@ -55,6 +64,7 @@ impl IoHub {
             announce,
             device_write_blocked: false,
             pending_device_write: Vec::new(),
+            last_device_status_msg: None,
         };
 
         if let Some(s) = &mut io_hub.server {
@@ -88,6 +98,15 @@ impl IoHub {
         self.instances.insert(token, instance);
 
         info!("Hub({:?}): {} registered", token, addr);
+
+        if self.announce {
+            if let Some(msg) = &self.last_device_status_msg {
+                if let Some(client) = self.instances.get_mut(&token) {
+                    client.write_all(msg.as_bytes());
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -121,7 +140,10 @@ impl IoHub {
             IoResult::Action(action) => {
                 info!("Hub received action: {:?}", action);
                 self.handle_action(action);
-                info!("Hub handle_action returned, quit_requested = {}", self.quit_requested);
+                info!(
+                    "Hub handle_action returned, quit_requested = {}",
+                    self.quit_requested
+                );
             }
             IoResult::None => {}
         }
@@ -177,7 +199,10 @@ impl IoHub {
     fn drain_client(&mut self, token: Token) {
         trace!("drain_client({:?}): starting", token);
         loop {
-            trace!("drain_client({:?}): loop iteration, quit_requested={}", token, self.quit_requested);
+            trace!(
+                "drain_client({:?}): loop iteration, quit_requested={}",
+                token, self.quit_requested
+            );
             let result = match self.instances.get_mut(&token) {
                 Some(client) if client.connected() => match client.read() {
                     Ok(IoResult::None) => {
@@ -191,7 +216,10 @@ impl IoHub {
                     }
                 },
                 _ => {
-                    trace!("drain_client({:?}): client not found or disconnected, breaking", token);
+                    trace!(
+                        "drain_client({:?}): client not found or disconnected, breaking",
+                        token
+                    );
                     break;
                 }
             };
@@ -323,7 +351,6 @@ impl IoHub {
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
-        let mut device_connect_warn_first_only = true;
         let mut events = Events::with_capacity(128);
         let tick = Duration::from_millis(100);
         let mut last_tick = Instant::now();
@@ -343,30 +370,32 @@ impl IoHub {
             // disconnected.
             // Always print once connected.
             if !self.device.connected() {
-                match self.device.connect(&mut self.poll, TOKEN_DEV) {
+                let status_msg = match self.device.connect(&mut self.poll, TOKEN_DEV) {
                     Ok(()) => {
-                        device_connect_warn_first_only = false;
                         self.device_write_blocked = false;
-                        self.all_clients_str(format!(
+                        Some(format!(
                             "Info: {}: Connected\n\r",
                             self.device.addr_as_string()
-                        ));
+                        ))
                     }
 
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         // Connection in progress - silently wait
+                        None
                     }
 
-                    Err(e) => {
-                        if device_connect_warn_first_only {
-                            device_connect_warn_first_only = false;
-                            self.all_clients_str(format!(
-                                "Error: {}: {}\n\r",
-                                self.device.addr_as_string(),
-                                e
-                            ));
-                        }
-                    }
+                    Err(e) => Some(format!(
+                        "Error: {}: {}\n\r",
+                        self.device.addr_as_string(),
+                        e
+                    )),
+                };
+
+                if let Some(msg) = status_msg
+                    && Some(&msg) != self.last_device_status_msg.as_ref()
+                {
+                    self.last_device_status_msg = Some(msg.clone());
+                    self.all_clients_str(msg);
                 }
             }
 

@@ -79,7 +79,12 @@ pub async fn wait_for_port(port: u16, timeout_ms: u64) -> bool {
         attempts += 1;
         match TcpStream::connect(&addr) {
             Ok(s) => {
-                tprintln!("wait_for_port: Peer: {:?} Local: {:?} ready after {} attempts", s.peer_addr(), s.local_addr(), attempts);
+                tprintln!(
+                    "wait_for_port: Peer: {:?} Local: {:?} ready after {} attempts",
+                    s.peer_addr(),
+                    s.local_addr(),
+                    attempts
+                );
                 return true;
             }
             Err(e) => {
@@ -92,7 +97,8 @@ pub async fn wait_for_port(port: u16, timeout_ms: u64) -> bool {
     }
     tprintln!(
         "wait_for_port: {} TIMEOUT after {} attempts",
-        addr, attempts
+        addr,
+        attempts
     );
     false
 }
@@ -134,8 +140,8 @@ pub struct CrabtermBuilder {
 impl CrabtermBuilder {
     pub fn new() -> Self {
         Self {
-            headless: true,      // Default to headless for tests
-            no_announce: true,   // Default to no-announce for tests
+            headless: true,    // Default to headless for tests
+            no_announce: true, // Default to no-announce for tests
             ..Default::default()
         }
     }
@@ -184,7 +190,7 @@ impl CrabtermBuilder {
 
         // Device configuration
         if self.use_echo_device {
-            cmd.arg("--echo");
+            cmd.arg("echo");
         } else if let Some(addr) = &self.device_addr {
             cmd.arg(addr);
         } else {
