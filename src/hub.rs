@@ -290,7 +290,7 @@ impl IoHub {
                     Ok(IoResult::Action(_)) => {}
                     Err(e) => {
                         self.all_clients_str(format!(
-                            "\n\rInfo: {}: {}\n\r",
+                            "Info: {}: {}\n\r",
                             self.device.addr_as_string(),
                             e
                         ));
