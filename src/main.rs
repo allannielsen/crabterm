@@ -56,21 +56,19 @@ mod hub;
 mod io;
 mod iofilter;
 mod keybind;
+mod monitor;
 mod term;
 mod traits;
 
 use announce::expand_template;
 use hub::IoHub;
-use io::Console;
-use io::EchoDevice;
-use io::SerialDevice;
-use io::TcpDevice;
-use io::TcpServer;
+use io::{Console, EchoDevice, SerialDevice, TcpDevice, TcpServer};
+use monitor::DeviceMonitor;
+use traits::{IoInstance, TOKEN_MONITOR_CLIENT_START};
+
 use iofilter::FilterChain;
 use keybind::KeybindConfig;
 use term::disable_raw_mode;
-
-use crate::traits::IoInstance;
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_SHA"), ")");
 
@@ -139,9 +137,24 @@ fn main() -> std::io::Result<()> {
                 .short('p')
                 .long("port")
                 .value_name("PORT")
-                .help("Open a TCP server and listen on port")
+                .help("TCP port to listen on")
                 .value_parser(value_parser!(u16)),
         )
+        .arg(
+            Arg::new("device-monitor-port")
+                .long("device-monitor-port")
+                .value_name("PORT")
+                .help("TCP port for device monitoring")
+                .value_parser(value_parser!(u16)),
+        )
+        .arg(
+            Arg::new("device-monitor-template")
+                .long("device-monitor-template")
+                .value_name("TEMPLATE")
+                .help("Template for device monitoring")
+                .num_args(1),
+        )
+
         .arg(
             Arg::new("baudrate")
                 .short('b')
@@ -332,7 +345,49 @@ fn main() -> std::io::Result<()> {
     }
 
     let announce = !matches.get_flag("no-announce");
-    let mut hub = IoHub::new(device, server, announce, announce_template)?;
+
+    let monitor_port = matches
+        .get_one::<u16>("device-monitor-port")
+        .copied()
+        .or_else(|| {
+            config
+                .settings
+                .get("device-monitor-port")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+        });
+
+    let monitor_template = matches
+        .get_one::<String>("device-monitor-template")
+        .cloned()
+        .or_else(|| {
+            config
+                .settings
+                .get("device-monitor-template")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "%d: %m\n".to_string());
+
+    let monitor = if let Some(port) = monitor_port {
+        raw_print!(
+            "{}",
+            expand_template(
+                &announce_template,
+                "Local",
+                &format!("Device monitor at port: {}", port)
+            )
+        );
+        Some(DeviceMonitor::new(
+            port,
+            monitor_template,
+            TOKEN_MONITOR_CLIENT_START.0,
+        )?)
+    } else {
+        None
+    };
+
+    let mut hub = IoHub::new(device, server, monitor, announce, announce_template)?;
 
     if !headless {
         let filter_chain = FilterChain::new(&config.settings);

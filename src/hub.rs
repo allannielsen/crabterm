@@ -9,8 +9,10 @@ use std::time::{Duration, Instant};
 
 use crate::io::TcpServer;
 use crate::keybind::Action;
+use crate::monitor::DeviceMonitor;
 use crate::traits::{
-    IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_SERVER, TOKEN_SIGNAL,
+    IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_MONITOR_SERVER, TOKEN_SERVER,
+    TOKEN_SIGNAL,
 };
 
 pub struct IoHub {
@@ -22,6 +24,8 @@ pub struct IoHub {
     device: Box<dyn IoInstance>,
 
     server: Option<TcpServer>,
+
+    monitor: Option<DeviceMonitor>,
 
     signals: Signals,
 
@@ -49,6 +53,7 @@ impl IoHub {
     pub fn new(
         device: Box<dyn IoInstance>,
         server: Option<TcpServer>,
+        monitor: Option<DeviceMonitor>,
         announce: bool,
         announce_template: String,
     ) -> Result<Self> {
@@ -63,6 +68,7 @@ impl IoHub {
             instances: HashMap::new(),
             device,
             server,
+            monitor,
             signals,
             quit_requested: false,
             announce,
@@ -74,6 +80,10 @@ impl IoHub {
 
         if let Some(s) = &mut io_hub.server {
             s.register(&mut io_hub.poll, TOKEN_SERVER)?;
+        }
+
+        if let Some(m) = &mut io_hub.monitor {
+            m.register(&mut io_hub.poll, TOKEN_MONITOR_SERVER)?;
         }
 
         Ok(io_hub)
@@ -131,6 +141,9 @@ impl IoHub {
     /// registers WRITABLE interest when the device cannot accept the data.
     /// Unwritten bytes are saved in `pending_device_write` to avoid data loss.
     fn forward_to_device(&mut self, bytes: &[u8]) {
+        if let Some(m) = &mut self.monitor {
+            m.tx(bytes);
+        }
         Self::try_device_write(
             &mut *self.device,
             &mut self.pending_device_write,
@@ -289,6 +302,9 @@ impl IoHub {
             loop {
                 match self.device.read() {
                     Ok(IoResult::Data(buf)) => {
+                        if let Some(m) = &mut self.monitor {
+                            m.rx(&buf);
+                        }
                         for (_, client) in self.instances.iter_mut() {
                             if client.connected() {
                                 client.write_all(&buf);
@@ -316,6 +332,10 @@ impl IoHub {
             }
             for c in new_clients {
                 self.add(c)?;
+            }
+        } else if token_event == TOKEN_MONITOR_SERVER {
+            if let Some(m) = &mut self.monitor {
+                m.accept(&mut self.poll)?;
             }
         } else if token_event == TOKEN_SIGNAL {
             for signal in self.signals.pending() {
