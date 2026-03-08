@@ -135,6 +135,7 @@ pub struct CrabtermBuilder {
     log_level: LogLevel,
     headless: bool,
     no_announce: bool,
+    config_path: Option<PathBuf>,
 }
 
 impl CrabtermBuilder {
@@ -144,6 +145,12 @@ impl CrabtermBuilder {
             no_announce: true, // Default to no-announce for tests
             ..Default::default()
         }
+    }
+
+    /// Set a custom config file path
+    pub fn config(mut self, path: PathBuf) -> Self {
+        self.config_path = Some(path);
+        self
     }
 
     /// Connect to a TCP device at the given address
@@ -213,6 +220,11 @@ impl CrabtermBuilder {
         ));
         cmd.arg("--log-file").arg(&log_file);
         cmd.arg("--log-level").arg(self.log_level.as_str());
+
+        // Config file
+        if let Some(config) = self.config_path {
+            cmd.arg("-c").arg(config);
+        }
 
         // Headless mode
         if self.headless {

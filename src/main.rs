@@ -74,9 +74,9 @@ use crate::traits::IoInstance;
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_SHA"), ")");
 
-macro_rules! raw_println {
+macro_rules! raw_print {
     ($($arg:tt)*) => {
-        print!("{}\r\n", format!($($arg)*));
+        print!("{}", format!($($arg)*));
     };
 }
 
@@ -269,7 +269,7 @@ fn main() -> std::io::Result<()> {
 
     let mut server: Option<TcpServer> = None;
     if let Some(port) = matches.get_one::<u16>("port") {
-        raw_println!(
+        raw_print!(
             "{}",
             expand_template(
                 &announce_template,
@@ -292,7 +292,7 @@ fn main() -> std::io::Result<()> {
                 Box::new(client)
             }
             DeviceMode::Tcp(addr) => {
-                raw_println!(
+                raw_print!(
                     "{}",
                     expand_template(
                         &announce_template,
@@ -306,7 +306,7 @@ fn main() -> std::io::Result<()> {
                 Box::new(client)
             }
             DeviceMode::Echo() => {
-                raw_println!(
+                raw_print!(
                     "{}",
                     expand_template(&announce_template, "Local", "Echo mode")
                 );
@@ -320,7 +320,7 @@ fn main() -> std::io::Result<()> {
     let headless = matches.get_flag("headless");
 
     if headless && server.is_none() {
-        raw_println!(
+        raw_print!(
             "{}",
             expand_template(
                 &announce_template,

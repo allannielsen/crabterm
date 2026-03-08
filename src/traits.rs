@@ -67,6 +67,7 @@ pub trait IoInstance {
     fn write_announce(&mut self, template: &str, source: &str, msg: &str) {
         let expanded = crate::announce::expand_template(template, source, msg);
         self.write_all(expanded.as_bytes());
+        self.flush();
     }
 
     /// Request WRITABLE interest from the poll loop so that the caller is

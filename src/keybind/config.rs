@@ -76,16 +76,16 @@ impl KeybindConfig {
     }
 
     pub fn load(path: Option<PathBuf>) -> Self {
-        let mut config_path = dirs::home_dir().map(|home| home.join(".crabterm"));
+        let config_path = if let Some(p) = path {
+            Some(p)
+        } else {
+            dirs::home_dir().map(|home| home.join(".crabterm"))
+        };
 
-        if path.is_some() {
-            config_path = path;
-        }
-
-        let config = if let Some(p) = config_path
+        let config = if let Some(ref p) = config_path
             && p.exists()
         {
-            match KeybindConfig::load_from_file(&p) {
+            match KeybindConfig::load_from_file(p) {
                 Ok(config) => {
                     info!("Loaded keybind config from {:?}", p);
                     config
@@ -96,7 +96,11 @@ impl KeybindConfig {
                 }
             }
         } else {
-            info!("No config file found, using defaults");
+            if config_path.is_some() {
+                info!("Config file {:?} not found, using defaults", config_path);
+            } else {
+                info!("No config file found, using defaults");
+            }
             KeybindConfig::default()
         };
 
