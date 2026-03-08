@@ -22,10 +22,10 @@ map-prefix c filter-toggle charmap
 ## Announcements ###############################################################
 # Configure the format of announcements (device status, new clients, etc.)
 # Placeholders:
+#   %d - date (yyyy-mm-dd)
 #   %m - message
 #   %s - source (e.g. "Local" or "127.0.0.1:4000")
 #   %t - time (hh:mm:ss)
-#   %d - date (yyyy-mm-dd)
 #   %% - literal '%'
 #
 # Examples:
