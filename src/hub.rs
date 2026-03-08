@@ -290,7 +290,7 @@ impl IoHub {
                     Ok(IoResult::Action(_)) => {}
                     Err(e) => {
                         self.all_clients_str(format!(
-                            "Info: {}: {}\n\r",
+                            "{}: {}\n\r",
                             self.device.addr_as_string(),
                             e
                         ));
@@ -373,7 +373,7 @@ impl IoHub {
                     Ok(()) => {
                         self.device_write_blocked = false;
                         Some(format!(
-                            "Info: {}: Connected\n\r",
+                            "{}: Connected\n\r",
                             self.device.addr_as_string()
                         ))
                     }
@@ -384,7 +384,7 @@ impl IoHub {
                     }
 
                     Err(e) => Some(format!(
-                        "Error: {}: {}\n\r",
+                        "{}: {}\n\r",
                         self.device.addr_as_string(),
                         e
                     )),
