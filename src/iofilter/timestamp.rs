@@ -70,10 +70,7 @@ impl IoFilter for TimestampFilter {
                         write!(output, "{} ", now.format("%H:%M:%S%.3f")).unwrap();
                     }
                     if self.show_rel {
-                        let elapsed = self
-                            .last_output
-                            .map(|t| t.elapsed())
-                            .unwrap_or_default();
+                        let elapsed = self.last_output.map(|t| t.elapsed()).unwrap_or_default();
                         write!(output, "+{:>6.3} ", elapsed.as_secs_f64()).unwrap();
                     }
                     self.last_output = Some(Instant::now());

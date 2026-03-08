@@ -1,5 +1,5 @@
-use log::debug;
 use super::key::{Key, KeyEvent, Modifiers};
+use log::debug;
 
 /// Result of parsing bytes
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,7 +93,11 @@ fn parse_bytes(bytes: &[u8]) -> ParseResult {
     }
 
     let first = bytes[0];
-    debug!("parse_bytes: first byte = 0x{:02x}, buffer len = {}", first, bytes.len());
+    debug!(
+        "parse_bytes: first byte = 0x{:02x}, buffer len = {}",
+        first,
+        bytes.len()
+    );
 
     // Escape sequences
     if first == 0x1b {

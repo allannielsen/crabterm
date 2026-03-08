@@ -1,7 +1,7 @@
 #[macro_use]
 mod common;
 
-use common::{find_available_port, wait_for_port, CrabtermProcess, LogLevel};
+use common::{CrabtermProcess, LogLevel, find_available_port, wait_for_port};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -66,8 +66,11 @@ async fn test_tcp_connects_to_server() {
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap();
 
-    tprintln!("Client connected: Peer: {:?}, Local: {:?}", client.peer_addr(), client.local_addr());
-
+    tprintln!(
+        "Client connected: Peer: {:?}, Local: {:?}",
+        client.peer_addr(),
+        client.local_addr()
+    );
 
     // Send data from client -> crabterm -> device
     client.write_all(b"hello").unwrap();
@@ -235,7 +238,10 @@ async fn test_slow_client_does_not_backpressure_device() {
                 break;
             }
             Err(_) => {
-                tprintln!("Device write timeout at chunk {} (backpressure detected)", i);
+                tprintln!(
+                    "Device write timeout at chunk {} (backpressure detected)",
+                    i
+                );
                 break;
             }
         }
@@ -244,10 +250,7 @@ async fn test_slow_client_does_not_backpressure_device() {
     let total_bytes = chunks_sent * chunk.len();
     tprintln!("Device sent {} chunks ({} bytes)", chunks_sent, total_bytes);
 
-    assert!(
-        crabterm.is_running(),
-        "Crabterm must not crash"
-    );
+    assert!(crabterm.is_running(), "Crabterm must not crash");
 
     assert_eq!(
         chunks_sent, total_chunks,
@@ -274,8 +277,9 @@ async fn test_slow_client_does_not_backpressure_device() {
             Ok(n) => {
                 total_read += n;
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut
-                || e.kind() == std::io::ErrorKind::WouldBlock =>
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::WouldBlock =>
             {
                 panic!(
                     "Slow client: read timed out after {} bytes — socket not closed by crabterm",
@@ -283,7 +287,11 @@ async fn test_slow_client_does_not_backpressure_device() {
                 );
             }
             Err(e) => {
-                tprintln!("Slow client: read error after {} bytes: {} (treating as closed)", total_read, e);
+                tprintln!(
+                    "Slow client: read error after {} bytes: {} (treating as closed)",
+                    total_read,
+                    e
+                );
                 break;
             }
         }
@@ -294,7 +302,10 @@ async fn test_slow_client_does_not_backpressure_device() {
         "Slow client should have been disconnected before receiving all 8MB (got {} bytes)",
         total_read
     );
-    tprintln!("Slow client received {} bytes before EOF (< 8MB) — confirmed disconnected", total_read);
+    tprintln!(
+        "Slow client received {} bytes before EOF (< 8MB) — confirmed disconnected",
+        total_read
+    );
 
     crabterm.stop();
 }
@@ -438,14 +449,19 @@ async fn test_client_to_device_backpressure() {
             panic!(
                 "Data mismatch at byte offset {}: sent 0x{:02x}, got 0x{:02x} \
                  (sent={} bytes, received={} bytes)",
-                pos, send_buf[pos], received_buf[pos],
-                send_buf.len(), received_buf.len()
+                pos,
+                send_buf[pos],
+                received_buf[pos],
+                send_buf.len(),
+                received_buf.len()
             );
         } else {
             panic!(
                 "Length mismatch: sent={} bytes, received={} bytes \
                  (first {} bytes match)",
-                send_buf.len(), received_buf.len(), cmp_len
+                send_buf.len(),
+                received_buf.len(),
+                cmp_len
             );
         }
     }
@@ -540,12 +556,20 @@ async fn test_slow_client_does_not_block_fast_client() {
         }
     }
     let total_bytes_sent = chunks_sent * chunk.len();
-    tprintln!("Device send loop done. Sent {} chunks ({} bytes)", chunks_sent, total_bytes_sent);
+    tprintln!(
+        "Device send loop done. Sent {} chunks ({} bytes)",
+        chunks_sent,
+        total_bytes_sent
+    );
 
     // Wait for fast client to finish receiving
     tprintln!("Waiting for fast client...");
     let (fast_received, fast_client_closed) = fast_client_handle.await.unwrap();
-    tprintln!("Fast client done. Received {} bytes, closed={}", fast_received, fast_client_closed);
+    tprintln!(
+        "Fast client done. Received {} bytes, closed={}",
+        fast_received,
+        fast_client_closed
+    );
 
     // Give crabterm ample time to process remaining data and disconnect slow clients
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -669,4 +693,3 @@ async fn test_slow_client_does_not_block_fast_client() {
     // Keep fast_writer alive until end of test (dropping it causes EOF on server)
     drop(fast_writer);
 }
-

@@ -99,7 +99,10 @@ impl KeybindProcessor {
     fn handle_parse_result(&mut self, parse_result: ParseResult) -> Option<KeybindResult> {
         match parse_result {
             ParseResult::Key(key_event, consumed) => {
-                debug!("Parsed key event: {:?} (consumed {} bytes)", key_event, consumed);
+                debug!(
+                    "Parsed key event: {:?} (consumed {} bytes)",
+                    key_event, consumed
+                );
                 self.handle_key_event(key_event)
             }
             ParseResult::Passthrough(byte) => {
@@ -111,7 +114,10 @@ impl KeybindProcessor {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Option<KeybindResult> {
-        debug!("Handling key event in state {:?}: {:?}", self.state, key_event);
+        debug!(
+            "Handling key event in state {:?}: {:?}",
+            self.state, key_event
+        );
         let result = match self.state {
             State::Normal => self.handle_normal(key_event),
             State::AwaitingPrefixCommand => self.handle_prefix_mode(key_event),

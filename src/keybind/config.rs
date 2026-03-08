@@ -56,9 +56,10 @@ impl Default for KeybindConfig {
         config
             .prefix_bindings
             .insert(KeyEvent::ctrl_char('a'), Action::Send(vec![0x01])); // Send literal Ctrl+A
-        config
-            .prefix_bindings
-            .insert(KeyEvent::char('t'), Action::FilterToggle("timestamp".to_string()));
+        config.prefix_bindings.insert(
+            KeyEvent::char('t'),
+            Action::FilterToggle("timestamp".to_string()),
+        );
 
         config
     }
@@ -102,11 +103,17 @@ impl KeybindConfig {
         // Log the loaded configuration
         info!("Keybind configuration:");
         info!("  Prefix: {:?}", config.prefix);
-        info!("  Direct bindings: {} entries", config.direct_bindings.len());
+        info!(
+            "  Direct bindings: {} entries",
+            config.direct_bindings.len()
+        );
         for (key, action) in &config.direct_bindings {
             info!("    {:?} -> {:?}", key, action);
         }
-        info!("  Prefix bindings: {} entries", config.prefix_bindings.len());
+        info!(
+            "  Prefix bindings: {} entries",
+            config.prefix_bindings.len()
+        );
         for (key, action) in &config.prefix_bindings {
             info!("    {:?} -> {:?}", key, action);
         }
@@ -337,7 +344,9 @@ fn parse_action(parts: &mut LineParser) -> Result<Action, String> {
     match action_name {
         "quit" => Ok(Action::Quit),
         "filter-toggle" => {
-            let filter_name = parts.next_word().ok_or("filter-toggle requires a filter name")?;
+            let filter_name = parts
+                .next_word()
+                .ok_or("filter-toggle requires a filter name")?;
             Ok(Action::FilterToggle(filter_name.to_string()))
         }
         "send" => {

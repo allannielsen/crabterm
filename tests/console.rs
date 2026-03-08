@@ -1,7 +1,7 @@
 #[macro_use]
 mod common;
 
-use common::{find_available_port, LogLevel};
+use common::{LogLevel, find_available_port};
 use std::os::unix::io::FromRawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -33,7 +33,10 @@ fn create_pty() -> Result<(i32, i32), String> {
 fn get_pty_path(fd: i32) -> Result<String, String> {
     let name_ptr = unsafe { libc::ttyname(fd) };
     if name_ptr.is_null() {
-        return Err(format!("ttyname failed: {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "ttyname failed: {}",
+            std::io::Error::last_os_error()
+        ));
     }
 
     let c_str = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
@@ -86,7 +89,11 @@ impl ConsoleTestHarness {
 
         // Create PTY for console
         let (console_master, console_slave) = create_pty().expect("Failed to create console PTY");
-        tprintln!("Console PTY master={}, slave={}", console_master, console_slave);
+        tprintln!(
+            "Console PTY master={}, slave={}",
+            console_master,
+            console_slave
+        );
 
         // Find port for TCP server
         let crabterm_port = find_available_port().await;
@@ -242,7 +249,11 @@ async fn test_console_ctrl_q_exits() {
         let mut buf = [0u8; 4096];
         match read_fd(harness.console_master, &mut buf) {
             Ok(n) => {
-                tprintln!("Console output ({} bytes): {:?}", n, String::from_utf8_lossy(&buf[..n]));
+                tprintln!(
+                    "Console output ({} bytes): {:?}",
+                    n,
+                    String::from_utf8_lossy(&buf[..n])
+                );
             }
             Err(e) => {
                 tprintln!("Could not read console output: {}", e);
@@ -253,10 +264,7 @@ async fn test_console_ctrl_q_exits() {
         tprintln!("Log contents:\n{}", harness.read_log());
     }
 
-    assert!(
-        !running_after_ctrl_q,
-        "Crabterm should exit after Ctrl+Q"
-    );
+    assert!(!running_after_ctrl_q, "Crabterm should exit after Ctrl+Q");
 
     tprintln!("Test passed: Ctrl+Q successfully exited crabterm");
 }
@@ -266,7 +274,7 @@ async fn test_console_ctrl_q_exits() {
 async fn test_verbose_flag_enables_console_logging() {
     // Test different verbose levels
     let test_cases = vec![
-        (3, "INFO", "-vvv"),   // Start with INFO level since lower levels produce no output
+        (3, "INFO", "-vvv"), // Start with INFO level since lower levels produce no output
         (4, "DEBUG", "-vvvv"),
     ];
 
@@ -284,7 +292,11 @@ async fn test_verbose_flag_enables_console_logging() {
         // Set console_master to non-blocking mode
         unsafe {
             let flags = libc::fcntl(harness.console_master, libc::F_GETFL);
-            libc::fcntl(harness.console_master, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            libc::fcntl(
+                harness.console_master,
+                libc::F_SETFL,
+                flags | libc::O_NONBLOCK,
+            );
         }
 
         // Read console output
@@ -360,7 +372,11 @@ async fn test_console_keypress_does_not_block_device_output() {
     // Set console_master to non-blocking so we can poll without blocking the test.
     unsafe {
         let flags = libc::fcntl(harness.console_master, libc::F_GETFL);
-        libc::fcntl(harness.console_master, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        libc::fcntl(
+            harness.console_master,
+            libc::F_SETFL,
+            flags | libc::O_NONBLOCK,
+        );
     }
 
     // Poll console_master for up to 500 ms.  Normal operation completes in

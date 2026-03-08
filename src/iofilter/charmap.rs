@@ -9,14 +9,14 @@ pub const SETTING_OMAP: &str = "charmap-omap";
 
 #[derive(Debug, Clone, Copy)]
 enum Mapping {
-    CrLf,    // \r -> \n
-    CrCrLf,  // \r -> \r\n
-    IgnCr,   // \r -> (nothing)
-    LfCr,    // \n -> \r
-    LfCrLf,  // \n -> \r\n
-    IgnLf,   // \n -> (nothing)
-    BsDel,   // 0x08 -> 0x7f
-    DelBs,   // 0x7f -> 0x08
+    CrLf,   // \r -> \n
+    CrCrLf, // \r -> \r\n
+    IgnCr,  // \r -> (nothing)
+    LfCr,   // \n -> \r
+    LfCrLf, // \n -> \r\n
+    IgnLf,  // \n -> (nothing)
+    BsDel,  // 0x08 -> 0x7f
+    DelBs,  // 0x7f -> 0x08
 }
 
 impl Mapping {
