@@ -42,8 +42,13 @@ async fn test_client_receives_device_not_connected_hint() {
 
     tprintln!("Received from crabterm: {}", received);
 
-    // The current behavior (according to the user) is that it only sees "Connected" (to the server)
-    // but not the "Error" from the device.
+    // Check for IP/Port prefix and error message
+    let expected_prefix = format!(":{}", crabterm_port);
+    assert!(
+        received.contains(&expected_prefix),
+        "Announcement should be prefixed with IP:PORT. Got: {}",
+        received
+    );
     assert!(
         received.contains("Error")
             || received.contains("Not connected")
@@ -84,6 +89,13 @@ async fn test_client_receives_device_connected_hint() {
 
     tprintln!("Received: {}", received);
 
+    // Check for IP/Port prefix and Connected message
+    let expected_prefix = format!(":{}", crabterm_port);
+    assert!(
+        received.contains(&expected_prefix),
+        "Announcement should be prefixed with IP:PORT. Got: {}",
+        received
+    );
     assert!(
         received.contains("Connected"),
         "Client should receive hint that device is connected. Got: {}",
@@ -129,6 +141,13 @@ async fn test_late_connecting_client_receives_last_error() {
 
     tprintln!("Late client received: {}", received);
 
+    // Check for IP/Port prefix and Error message
+    let expected_prefix = format!(":{}", crabterm_port);
+    assert!(
+        received.contains(&expected_prefix),
+        "Late announcement should be prefixed with IP:PORT. Got: {}",
+        received
+    );
     assert!(
         received.contains("Error") && received.contains("No such file"),
         "Late client should receive the actual device error. Got: {}",

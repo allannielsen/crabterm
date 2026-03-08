@@ -99,12 +99,11 @@ impl IoHub {
 
         info!("Hub({:?}): {} registered", token, addr);
 
-        if self.announce {
-            if let Some(msg) = &self.last_device_status_msg {
-                if let Some(client) = self.instances.get_mut(&token) {
-                    client.write_all(msg.as_bytes());
-                }
-            }
+        if self.announce
+            && let Some(msg) = &self.last_device_status_msg
+            && let Some(client) = self.instances.get_mut(&token)
+        {
+            client.write_announce(msg);
         }
 
         Ok(())
@@ -114,7 +113,7 @@ impl IoHub {
         info!("Announce: {}", msg.trim());
         if self.announce {
             for (_, client) in self.instances.iter_mut() {
-                client.write_all(msg.as_bytes());
+                client.write_announce(&msg);
             }
         }
     }

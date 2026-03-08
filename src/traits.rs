@@ -56,6 +56,11 @@ pub trait IoInstance {
         written
     }
 
+    /// Write an announcement message. Default implementation uses `write_all`.
+    fn write_announce(&mut self, msg: &str) {
+        self.write_all(msg.as_bytes());
+    }
+
     /// Request WRITABLE interest from the poll loop so that the caller is
     /// notified when the underlying socket can accept data again.
     /// Default is a no-op for devices that don't support this.
