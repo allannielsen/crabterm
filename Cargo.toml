@@ -1,9 +1,10 @@
 [package]
 name = "crabterm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A terminal (UART) server and client"
 repository = "https://github.com/allannielsen/crabterm"
+readme = "README.md"
 license = "MIT"
 keywords = ["serial", "uart", "terminal", "tcp"]
 categories = ["command-line-utilities"]

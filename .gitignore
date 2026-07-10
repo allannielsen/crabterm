@@ -1,1 +1,5 @@
 /target
+
+# Local development artifacts (not for publishing)
+/log
+/CLAUDE.md
