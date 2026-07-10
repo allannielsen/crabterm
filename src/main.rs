@@ -61,7 +61,7 @@ mod term;
 mod traits;
 
 use announce::expand_template;
-use hub::IoHub;
+use hub::{IoHub, RwConfig};
 use io::{Console, EchoDevice, SerialDevice, TcpDevice, TcpServer};
 use monitor::DeviceMonitor;
 use traits::{IoInstance, TOKEN_MONITOR_CLIENT_START};
@@ -137,8 +137,31 @@ fn main() -> std::io::Result<()> {
                 .short('p')
                 .long("port")
                 .value_name("PORT")
-                .help("TCP port to listen on")
+                .help("TCP port to listen on (alias for --rw-port)")
+                .value_parser(value_parser!(u16))
+                .conflicts_with("rw-port"),
+        )
+        .arg(
+            Arg::new("rw-port")
+                .long("rw-port")
+                .value_name("PORT")
+                .help("Read-write TCP port (bidirectional). 0 = OS-assigned random port")
                 .value_parser(value_parser!(u16)),
+        )
+        .arg(
+            Arg::new("ro-port")
+                .long("ro-port")
+                .value_name("PORT")
+                .help("Read-only TCP port: clients receive a raw mirror of device output; their input is discarded")
+                .value_parser(value_parser!(u16)),
+        )
+        .arg(
+            Arg::new("rw-port-file")
+                .long("rw-port-file")
+                .value_name("PATH")
+                .help("Publish the current read-write port (and pid) to this file; rewritten on force-release (SIGUSR1), deleted on shutdown")
+                .value_parser(clap::value_parser!(PathBuf))
+                .num_args(1),
         )
         .arg(
             Arg::new("device-monitor-port")
@@ -280,17 +303,62 @@ fn main() -> std::io::Result<()> {
         .unwrap_or("MSG-%s: %t %m\r\n")
         .to_string();
 
-    let mut server: Option<TcpServer> = None;
-    if let Some(port) = matches.get_one::<u16>("port") {
+    // Read-write server. --rw-port takes precedence over the legacy -p/--port
+    // alias (they conflict, so at most one is set). A bind port of 0 means the
+    // OS assigns a random port.
+    let rw_port = matches
+        .get_one::<u16>("rw-port")
+        .or_else(|| matches.get_one::<u16>("port"))
+        .copied();
+
+    let rw_port_file = matches.get_one::<PathBuf>("rw-port-file").cloned();
+
+    if rw_port_file.is_some() && rw_port.is_none() {
         raw_print!(
             "{}",
             expand_template(
                 &announce_template,
                 "Local",
-                &format!("Listning at port: {}", port)
+                "Error: --rw-port-file requires --rw-port (or -p/--port)"
             )
         );
-        server = Some(TcpServer::new(*port)?);
+        std::process::exit(1);
+    }
+
+    let mut server: Option<TcpServer> = None;
+    let mut rw_config: Option<RwConfig> = None;
+    if let Some(port) = rw_port {
+        let s = TcpServer::new(port)?;
+        let actual_port = s.port()?;
+        raw_print!(
+            "{}",
+            expand_template(
+                &announce_template,
+                "Local",
+                &format!("Listning at port: {}", actual_port)
+            )
+        );
+        server = Some(s);
+        rw_config = Some(RwConfig {
+            bind_port: port,
+            port_file: rw_port_file,
+        });
+    }
+
+    // Read-only "listen-in" server.
+    let mut ro_server: Option<TcpServer> = None;
+    if let Some(port) = matches.get_one::<u16>("ro-port") {
+        let s = TcpServer::new_ro(*port)?;
+        let actual_port = s.port()?;
+        raw_print!(
+            "{}",
+            expand_template(
+                &announce_template,
+                "Local",
+                &format!("Read-only listening at port: {}", actual_port)
+            )
+        );
+        ro_server = Some(s);
     }
 
     let device: Box<dyn IoInstance> = if let Some(dev) = matches
@@ -332,13 +400,13 @@ fn main() -> std::io::Result<()> {
 
     let headless = matches.get_flag("headless");
 
-    if headless && server.is_none() {
+    if headless && server.is_none() && ro_server.is_none() {
         raw_print!(
             "{}",
             expand_template(
                 &announce_template,
                 "Local",
-                "Error: --headless requires -p/--port option"
+                "Error: --headless requires --rw-port (or -p/--port) or --ro-port"
             )
         );
         std::process::exit(1);
@@ -387,7 +455,15 @@ fn main() -> std::io::Result<()> {
         None
     };
 
-    let mut hub = IoHub::new(device, server, monitor, announce, announce_template)?;
+    let mut hub = IoHub::new(
+        device,
+        server,
+        rw_config,
+        ro_server,
+        monitor,
+        announce,
+        announce_template,
+    )?;
 
     if !headless {
         let filter_chain = FilterChain::new(&config.settings);

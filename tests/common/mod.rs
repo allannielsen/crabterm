@@ -131,6 +131,9 @@ impl LogLevel {
 pub struct CrabtermBuilder {
     device_addr: Option<String>,
     listen_port: Option<u16>,
+    rw_port: Option<u16>,
+    ro_port: Option<u16>,
+    rw_port_file: Option<PathBuf>,
     use_echo_device: bool,
     log_level: LogLevel,
     headless: bool,
@@ -173,6 +176,24 @@ impl CrabtermBuilder {
         self
     }
 
+    /// Read-write server port (--rw-port). Use 0 for an OS-assigned random port.
+    pub fn rw_port(mut self, port: u16) -> Self {
+        self.rw_port = Some(port);
+        self
+    }
+
+    /// Read-only server port (--ro-port).
+    pub fn ro_port(mut self, port: u16) -> Self {
+        self.ro_port = Some(port);
+        self
+    }
+
+    /// Path to publish the current read-write port to (--rw-port-file).
+    pub fn rw_port_file(mut self, path: PathBuf) -> Self {
+        self.rw_port_file = Some(path);
+        self
+    }
+
     /// Set the log level
     pub fn log_level(mut self, level: LogLevel) -> Self {
         self.log_level = level;
@@ -207,6 +228,15 @@ impl CrabtermBuilder {
         // Listen port
         if let Some(port) = self.listen_port {
             cmd.arg("-p").arg(port.to_string());
+        }
+        if let Some(port) = self.rw_port {
+            cmd.arg("--rw-port").arg(port.to_string());
+        }
+        if let Some(port) = self.ro_port {
+            cmd.arg("--ro-port").arg(port.to_string());
+        }
+        if let Some(path) = &self.rw_port_file {
+            cmd.arg("--rw-port-file").arg(path);
         }
 
         // Log file
@@ -268,6 +298,19 @@ impl CrabtermProcess {
     /// Get the listen port if configured
     pub fn listen_port(&self) -> Option<u16> {
         self.listen_port
+    }
+
+    /// The OS process id of the spawned crabterm.
+    pub fn pid(&self) -> i32 {
+        self.child.id() as i32
+    }
+
+    /// Send an arbitrary signal to the process (e.g. libc::SIGUSR1).
+    pub fn send_signal(&self, signal: i32) {
+        let pid = self.child.id() as i32;
+        unsafe {
+            libc::kill(pid, signal);
+        }
     }
 
     /// Check if the process is still running

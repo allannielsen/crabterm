@@ -1,19 +1,31 @@
 use log::{error, info, trace};
 use mio::event::Event;
 use mio::{Events, Interest, Poll, Token};
-use signal_hook::consts::signal::{SIGINT, SIGTERM};
+use signal_hook::consts::signal::{SIGINT, SIGTERM, SIGUSR1};
 use signal_hook_mio::v1_0::Signals;
 use std::collections::HashMap;
-use std::io::Result;
+use std::io::{Result, Write};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::io::TcpServer;
 use crate::keybind::Action;
 use crate::monitor::DeviceMonitor;
 use crate::traits::{
-    IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_MONITOR_SERVER, TOKEN_SERVER,
-    TOKEN_SIGNAL,
+    IoInstance, IoResult, TOKEN_DEV, TOKEN_DYNAMIC_START, TOKEN_MONITOR_SERVER, TOKEN_RO_SERVER,
+    TOKEN_SERVER, TOKEN_SIGNAL,
 };
+
+/// Configuration for the read-write server that supports force-release.
+pub struct RwConfig {
+    /// The configured bind port. 0 means "OS-assigned random port"; on each
+    /// force-release a new random port is obtained. A fixed port is re-bound
+    /// as-is (still disconnecting all RW clients).
+    pub bind_port: u16,
+    /// Optional file to publish the current RW port (and pid) to. Written on
+    /// startup and after every force-release; deleted on graceful shutdown.
+    pub port_file: Option<PathBuf>,
+}
 
 pub struct IoHub {
     poll: Poll,
@@ -23,7 +35,17 @@ pub struct IoHub {
     // instances (despite it is has a compatible type).
     device: Box<dyn IoInstance>,
 
+    /// Read-write server: bidirectional clients (bots/users). Rebuilt on
+    /// force-release. `None` if no RW server was configured.
     server: Option<TcpServer>,
+
+    /// Configuration used to re-bind the RW server on force-release and to
+    /// publish its port. `None` when there is no RW server.
+    rw_config: Option<RwConfig>,
+
+    /// Read-only server: clients receive a raw mirror of the device output but
+    /// their input is discarded. Never affected by force-release.
+    ro_server: Option<TcpServer>,
 
     monitor: Option<DeviceMonitor>,
 
@@ -50,14 +72,17 @@ pub struct IoHub {
 }
 
 impl IoHub {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: Box<dyn IoInstance>,
         server: Option<TcpServer>,
+        rw_config: Option<RwConfig>,
+        ro_server: Option<TcpServer>,
         monitor: Option<DeviceMonitor>,
         announce: bool,
         announce_template: String,
     ) -> Result<Self> {
-        let mut signals = Signals::new([SIGINT, SIGTERM])?;
+        let mut signals = Signals::new([SIGINT, SIGTERM, SIGUSR1])?;
         let poll = Poll::new()?;
 
         poll.registry()
@@ -68,6 +93,8 @@ impl IoHub {
             instances: HashMap::new(),
             device,
             server,
+            rw_config,
+            ro_server,
             monitor,
             signals,
             quit_requested: false,
@@ -82,9 +109,16 @@ impl IoHub {
             s.register(&mut io_hub.poll, TOKEN_SERVER)?;
         }
 
+        if let Some(s) = &mut io_hub.ro_server {
+            s.register(&mut io_hub.poll, TOKEN_RO_SERVER)?;
+        }
+
         if let Some(m) = &mut io_hub.monitor {
             m.register(&mut io_hub.poll, TOKEN_MONITOR_SERVER)?;
         }
+
+        // Publish the initial RW port to the port file (if configured).
+        io_hub.write_port_file();
 
         Ok(io_hub)
     }
@@ -122,6 +156,117 @@ impl IoHub {
         }
 
         Ok(())
+    }
+
+    /// Force-release: tear down the read-write server, disconnect all RW
+    /// clients, and re-bind a fresh RW listener. With a random bind port (0)
+    /// this yields a new port each time; with a fixed port the same port is
+    /// re-bound. The new port is published to the port file. Read-only clients
+    /// and the local console are untouched.
+    fn force_release(&mut self) {
+        // Only meaningful if a RW server is configured.
+        if self.server.is_none() {
+            info!("force_release: no read-write server configured, ignoring");
+            return;
+        }
+
+        let bind_port = self.rw_config.as_ref().map(|c| c.bind_port).unwrap_or(0);
+
+        // Bind the new listener first so a failure leaves the old one intact.
+        // A random port (0) always yields a fresh free port. For a fixed port
+        // the old listener still holds it, so we drop the old one first and
+        // then rebind the same port.
+        let mut new_server = match TcpServer::new(bind_port) {
+            Ok(s) => s,
+            Err(ref e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                if let Some(mut old) = self.server.take() {
+                    let _ = old.deregister(&mut self.poll);
+                }
+                match TcpServer::new(bind_port) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!(
+                            "force_release: failed to re-bind RW listener on port {}: {}",
+                            bind_port, e
+                        );
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    "force_release: failed to bind new RW listener on port {}: {} — keeping existing server",
+                    bind_port, e
+                );
+                return;
+            }
+        };
+
+        if let Err(e) = new_server.register(&mut self.poll, TOKEN_SERVER) {
+            error!("force_release: failed to register new RW listener: {}", e);
+            return;
+        }
+
+        // Swap in the new listener; deregister and drop the old one (if the
+        // fixed-port path above did not already take it).
+        if let Some(mut old) = self.server.replace(new_server) {
+            let _ = old.deregister(&mut self.poll);
+        }
+
+        // Disconnect all force-releasable clients (RW TCP clients).
+        let tokens: Vec<Token> = self
+            .instances
+            .iter()
+            .filter(|(_, c)| c.force_releasable())
+            .map(|(&t, _)| t)
+            .collect();
+        for token in tokens {
+            if let Some(mut client) = self.instances.remove(&token) {
+                info!(
+                    "force_release: disconnecting RW client {:?} {}",
+                    token,
+                    client.addr_as_string()
+                );
+                client.disconnect(&mut self.poll);
+            }
+        }
+
+        // Publish the new port.
+        self.write_port_file();
+
+        if let Some(port) = self.server.as_ref().and_then(|s| s.port().ok()) {
+            let msg = format!("Force-release: read-write server now at port {}", port);
+            info!("{}", msg);
+            self.all_clients_announce(&msg);
+        }
+    }
+
+    /// Write the current read-write port (and pid) to the configured port file,
+    /// atomically (write to a temp file in the same directory, then rename).
+    /// No-op if there is no port file or no RW server.
+    fn write_port_file(&self) {
+        let Some(path) = self.rw_config.as_ref().and_then(|c| c.port_file.as_ref()) else {
+            return;
+        };
+        let Some(port) = self.server.as_ref().and_then(|s| s.port().ok()) else {
+            return;
+        };
+
+        let contents = format!("pid={}\nport={}\n", std::process::id(), port);
+        let tmp = path.with_extension("tmp");
+
+        let write_result = std::fs::File::create(&tmp)
+            .and_then(|mut f| f.write_all(contents.as_bytes()).map(|_| f))
+            .and_then(|mut f| f.flush())
+            .and_then(|_| std::fs::rename(&tmp, path));
+
+        match write_result {
+            Ok(()) => info!("Wrote RW port file {}: port={}", path.display(), port),
+            Err(e) => {
+                error!("Failed to write RW port file {}: {}", path.display(), e);
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
     }
 
     fn all_clients_str(&mut self, msg: String) {
@@ -224,18 +369,21 @@ impl IoHub {
                 "drain_client({:?}): loop iteration, quit_requested={}",
                 token, self.quit_requested
             );
-            let result = match self.instances.get_mut(&token) {
-                Some(client) if client.connected() => match client.read() {
-                    Ok(IoResult::None) => {
-                        trace!("drain_client({:?}): read returned None, breaking", token);
-                        break;
+            let (result, forwards_input) = match self.instances.get_mut(&token) {
+                Some(client) if client.connected() => {
+                    let forwards_input = client.forwards_input();
+                    match client.read() {
+                        Ok(IoResult::None) => {
+                            trace!("drain_client({:?}): read returned None, breaking", token);
+                            break;
+                        }
+                        Ok(result) => (result, forwards_input),
+                        Err(_) => {
+                            trace!("drain_client({:?}): read returned error, breaking", token);
+                            break;
+                        }
                     }
-                    Ok(result) => result,
-                    Err(_) => {
-                        trace!("drain_client({:?}): read returned error, breaking", token);
-                        break;
-                    }
-                },
+                }
                 _ => {
                     trace!(
                         "drain_client({:?}): client not found or disconnected, breaking",
@@ -244,9 +392,15 @@ impl IoHub {
                     break;
                 }
             };
-            trace!("drain_client({:?}): calling handle_read_result", token);
-            self.handle_read_result(result);
-            trace!("drain_client({:?}): handle_read_result returned", token);
+            if forwards_input {
+                trace!("drain_client({:?}): calling handle_read_result", token);
+                self.handle_read_result(result);
+                trace!("drain_client({:?}): handle_read_result returned", token);
+            } else {
+                // Read-only client: input is drained (to detect disconnect and
+                // keep the socket buffer clear) but never forwarded.
+                trace!("drain_client({:?}): read-only, discarding input", token);
+            }
             if self.device_write_blocked {
                 trace!("drain_client({:?}): device_write_blocked, breaking", token);
                 break;
@@ -333,14 +487,35 @@ impl IoHub {
             for c in new_clients {
                 self.add(c)?;
             }
+        } else if token_event == TOKEN_RO_SERVER {
+            // Read-only listen-in clients. Same accept path as the RW server;
+            // the accepted clients are tagged read-only so their input is
+            // discarded and they are immune to force-release.
+            let mut new_clients = Vec::new();
+            if let Some(s) = &mut self.ro_server {
+                while let Some(c) = s.accept() {
+                    new_clients.push(c);
+                }
+            }
+            for c in new_clients {
+                self.add(c)?;
+            }
         } else if token_event == TOKEN_MONITOR_SERVER {
             if let Some(m) = &mut self.monitor {
                 m.accept(&mut self.poll)?;
             }
         } else if token_event == TOKEN_SIGNAL {
             for signal in self.signals.pending() {
-                info!("Received signal {}, initiating graceful shutdown", signal);
-                self.quit_requested = true;
+                match signal {
+                    SIGUSR1 => {
+                        info!("Received SIGUSR1, performing force-release");
+                        self.force_release();
+                    }
+                    _ => {
+                        info!("Received signal {}, initiating graceful shutdown", signal);
+                        self.quit_requested = true;
+                    }
+                }
             }
         } else if self.instances.contains_key(&token_event) {
             // NOTICE: The 'console' is also a client
@@ -453,6 +628,20 @@ impl IoHub {
             let now = Instant::now();
             while now.duration_since(last_tick) >= tick {
                 last_tick = now;
+            }
+        }
+    }
+}
+
+impl Drop for IoHub {
+    fn drop(&mut self) {
+        // Remove the RW port file on shutdown so the reservation system does
+        // not attempt to connect to a port that is no longer served.
+        if let Some(path) = self.rw_config.as_ref().and_then(|c| c.port_file.as_ref()) {
+            match std::fs::remove_file(path) {
+                Ok(()) => info!("Removed RW port file {}", path.display()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => error!("Failed to remove RW port file {}: {}", path.display(), e),
             }
         }
     }

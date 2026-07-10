@@ -7,7 +7,8 @@ pub const TOKEN_DEV: Token = Token(0);
 pub const TOKEN_SERVER: Token = Token(1);
 pub const TOKEN_SIGNAL: Token = Token(2);
 pub const TOKEN_MONITOR_SERVER: Token = Token(3);
-pub const TOKEN_DYNAMIC_START: Token = Token(4);
+pub const TOKEN_RO_SERVER: Token = Token(4);
+pub const TOKEN_DYNAMIC_START: Token = Token(5);
 pub const TOKEN_MONITOR_CLIENT_START: Token = Token(1000);
 
 /// Result of an I/O operation
@@ -36,6 +37,20 @@ pub trait IoInstance {
     fn flush(&mut self);
 
     fn addr_as_string(&self) -> String;
+
+    /// Whether input read from this instance should be forwarded to the device.
+    /// Read-only clients return false: their input is drained and discarded so
+    /// it never reaches the device. Default is true (read-write).
+    fn forwards_input(&self) -> bool {
+        true
+    }
+
+    /// Whether this instance is disconnected by a force-release (SIGUSR1).
+    /// Only read-write TCP clients are force-releasable; the local console and
+    /// read-only clients are not. Default is false.
+    fn force_releasable(&self) -> bool {
+        false
+    }
 
     /// Return an announcement message to be sent to clients when the device
     /// connects. Default is "address: Connected".

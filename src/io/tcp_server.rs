@@ -7,19 +7,43 @@ use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr};
 
 pub struct TcpServer {
     listener: TcpListener,
+    read_only: bool,
 }
 
 impl TcpServer {
     pub fn new(port: u16) -> Result<Self> {
+        Self::bind(port, false)
+    }
+
+    /// Create a read-only server. Clients accepted from it have their input
+    /// drained and discarded (never forwarded to the device).
+    pub fn new_ro(port: u16) -> Result<Self> {
+        Self::bind(port, true)
+    }
+
+    fn bind(port: u16, read_only: bool) -> Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
         let listener = TcpListener::bind(addr)?;
 
-        Ok(TcpServer { listener })
+        Ok(TcpServer {
+            listener,
+            read_only,
+        })
+    }
+
+    /// The actual port the listener is bound to. Useful when binding to port 0
+    /// (OS-assigned random port).
+    pub fn port(&self) -> Result<u16> {
+        Ok(self.listener.local_addr()?.port())
     }
 
     pub fn register(&mut self, poll: &mut Poll, token: Token) -> Result<()> {
         poll.registry()
             .register(&mut self.listener, token, Interest::READABLE)
+    }
+
+    pub fn deregister(&mut self, poll: &mut Poll) -> Result<()> {
+        poll.registry().deregister(&mut self.listener)
     }
 
     pub fn accept(&mut self) -> Option<Box<dyn IoInstance>> {
@@ -30,6 +54,7 @@ impl TcpServer {
                     stream,
                     addr,
                     connected: true,
+                    read_only: self.read_only,
                 };
                 Some(Box::new(client))
             }
@@ -48,6 +73,7 @@ pub struct TcpClient {
     stream: TcpStream,
     addr: SocketAddr,
     connected: bool,
+    read_only: bool,
 }
 
 impl TcpClient {
@@ -71,6 +97,14 @@ impl IoInstance for TcpClient {
 
     fn connected(&self) -> bool {
         self.connected
+    }
+
+    fn forwards_input(&self) -> bool {
+        !self.read_only
+    }
+
+    fn force_releasable(&self) -> bool {
+        !self.read_only
     }
 
     fn addr_as_string(&self) -> String {
