@@ -30,15 +30,46 @@ The literal string \fBecho\fR for echo mode (testing without hardware)
 Path to the configuration file. Default: \fB~/.crabterm\fR
 .TP
 .BR \-p ", " \-\-port " " \fIPORT\fR
-Open a TCP server and listen on the specified port. Allows remote clients to
-connect and interact with the device.
+Open a read\-write TCP server and listen on the specified port. Allows remote
+clients to connect and interact with the device. This is an alias for
+\fB\-\-rw\-port\fR and conflicts with it.
+.TP
+.B \-\-rw\-port " " \fIPORT\fR
+Open a read\-write (bidirectional) TCP server on the specified port. Clients
+receive device output and their input is forwarded to the device. A value of
+\fB0\fR binds an OS\-assigned random port (report the actual port via
+\fB\-\-rw\-port\-file\fR). The read\-write server is the target of force\-release
+(see \fBSIGNALS\fR).
+.TP
+.B \-\-ro\-port " " \fIPORT\fR
+Open a read\-only "listen\-in" TCP server on the specified port. Clients receive
+a raw mirror of the device output, but any input they send is discarded and
+never reaches the device. Read\-only clients are never disconnected by
+force\-release. This differs from \fB\-\-device\-monitor\-port\fR, which emits
+escaped/annotated output rather than a raw mirror.
+.TP
+.B \-\-rw\-port\-file " " \fIPATH\fR
+Publish the current read\-write port (and process id) to \fIPATH\fR. The file is
+written on startup and rewritten after every force\-release, and is deleted on
+graceful shutdown. It is written atomically and has the format:
+.RS
+.RS
+.nf
+pid=\fIPID\fR
+port=\fIPORT\fR
+.fi
+.RE
+The file is directly \fBsource\fR\-able in a POSIX shell (setting \fB$pid\fR and
+\fB$port\fR). Requires a read\-write server to be configured.
+.RE
 .TP
 .BR \-b ", " \-\-baudrate " " \fIBAUDRATE\fR
 Set the baud rate for serial connections. Default: \fB115200\fR
 .TP
 .B \-\-headless
 Run in headless/daemon mode. No local console is attached; useful when running
-as a server with \fB\-p\fR.
+as a server. Requires at least one of \fB\-\-rw\-port\fR (or \fB\-p\fR) or
+\fB\-\-ro\-port\fR.
 .TP
 .BR \-d ", " \-\-device " " \fIDEVICE\fR
 Alternative way to specify the device (same as positional argument).
@@ -55,6 +86,20 @@ Print help information and exit.
 .TP
 .BR \-V ", " \-\-version
 Print version information and exit.
+.SH SIGNALS
+.TP
+.B SIGUSR1
+Force\-release the read\-write server. The read\-write listener is torn down and
+re\-created, and \fBall connected read\-write clients are disconnected\fR. If
+\fB\-\-rw\-port\fR is \fB0\fR (random) a new random port is chosen; a fixed port
+is re\-bound as\-is. The new port is written to \fB\-\-rw\-port\-file\fR (if
+configured). Read\-only clients (\fB\-\-ro\-port\fR) and the local console are
+\fBnot\fR affected. This is intended for freeing a hung or forgotten session
+without disturbing observers. See \fIdocs/reservation.md\fR for the full
+workflow.
+.TP
+.BR SIGINT ", " SIGTERM
+Graceful shutdown. The \fB\-\-rw\-port\-file\fR (if configured) is removed.
 .SH CONFIGURATION
 The configuration file (default \fB~/.crabterm\fR) controls keybindings, prefix
 keys, and filter settings. Lines starting with \fB#\fR are comments.
@@ -178,6 +223,27 @@ Echo mode for testing:
 .RS
 .nf
 crabterm echo
+.fi
+.RE
+.PP
+Reservable server with a random read\-write port, a stable read\-only listen\-in
+port, and a port file for a reservation system:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0 \-\-headless \\
+    \-\-rw\-port 0 \-\-rw\-port\-file /run/crabterm/rw.port \\
+    \-\-ro\-port 7000
+.fi
+.RE
+.PP
+Force\-release the current read\-write session (from the reservation system):
+.PP
+.RS
+.nf
+. /run/crabterm/rw.port   # sets $pid and $port
+kill \-USR1 "$pid"         # disconnect the RW client, rotate the port
+. /run/crabterm/rw.port   # re\-read the new $port
 .fi
 .RE
 .SH EXAMPLE CONFIGURATION
