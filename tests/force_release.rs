@@ -1,53 +1,17 @@
 #[macro_use]
 mod common;
 
-use common::{CrabtermProcess, LogLevel, find_available_port, wait_for_port};
+use common::{
+    CrabtermProcess, LogLevel, find_available_port, read_rw_port_file, temp_port_file,
+    wait_for_port, wait_for_rw_port_file,
+};
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::time::timeout;
-
-/// Unique temp path for a port file (not created; crabterm writes it).
-fn temp_port_file() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "crabterm_rwport_{}_{}.port",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ))
-}
-
-/// Parse a `pid=..\nport=..` port file. Returns None if missing/incomplete.
-fn read_rw_port_file(path: &Path) -> Option<(u32, u16)> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let mut pid = None;
-    let mut port = None;
-    for line in content.lines() {
-        if let Some(v) = line.strip_prefix("pid=") {
-            pid = v.trim().parse().ok();
-        } else if let Some(v) = line.strip_prefix("port=") {
-            port = v.trim().parse().ok();
-        }
-    }
-    Some((pid?, port?))
-}
-
-/// Poll until the port file exists and parses, or time out.
-async fn wait_for_rw_port_file(path: &Path, timeout_ms: u64) -> (u32, u16) {
-    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
-    while tokio::time::Instant::now() < deadline {
-        if let Some(v) = read_rw_port_file(path) {
-            return v;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    panic!("Timed out waiting for RW port file {}", path.display());
-}
 
 /// A device listener + a crabterm exposing RW (random) and RO servers.
 struct ReleaseHarness {

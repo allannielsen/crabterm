@@ -2,7 +2,7 @@
 
 use std::io::Read;
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
@@ -103,6 +103,45 @@ pub async fn wait_for_port(port: u16, timeout_ms: u64) -> bool {
     false
 }
 
+/// Unique temp path for a port file (not created; crabterm writes it).
+pub fn temp_port_file() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "crabterm_rwport_{}_{}.port",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
+}
+
+/// Parse a `pid=..\nport=..` port file. Returns None if missing/incomplete.
+pub fn read_rw_port_file(path: &Path) -> Option<(u32, u16)> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut pid = None;
+    let mut port = None;
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("pid=") {
+            pid = v.trim().parse().ok();
+        } else if let Some(v) = line.strip_prefix("port=") {
+            port = v.trim().parse().ok();
+        }
+    }
+    Some((pid?, port?))
+}
+
+/// Poll until the port file exists and parses, or time out.
+pub async fn wait_for_rw_port_file(path: &Path, timeout_ms: u64) -> (u32, u16) {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    while tokio::time::Instant::now() < deadline {
+        if let Some(v) = read_rw_port_file(path) {
+            return v;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("Timed out waiting for RW port file {}", path.display());
+}
+
 /// Log level for crabterm
 #[derive(Debug, Clone, Copy, Default)]
 pub enum LogLevel {
@@ -134,6 +173,8 @@ pub struct CrabtermBuilder {
     rw_port: Option<u16>,
     ro_port: Option<u16>,
     rw_port_file: Option<PathBuf>,
+    bind_address: Option<String>,
+    device_monitor_port: Option<u16>,
     use_echo_device: bool,
     log_level: LogLevel,
     headless: bool,
@@ -194,6 +235,18 @@ impl CrabtermBuilder {
         self
     }
 
+    /// Address the TCP servers listen on (--bind-address).
+    pub fn bind_address(mut self, addr: &str) -> Self {
+        self.bind_address = Some(addr.to_string());
+        self
+    }
+
+    /// Device monitor port (--device-monitor-port).
+    pub fn device_monitor_port(mut self, port: u16) -> Self {
+        self.device_monitor_port = Some(port);
+        self
+    }
+
     /// Set the log level
     pub fn log_level(mut self, level: LogLevel) -> Self {
         self.log_level = level;
@@ -237,6 +290,12 @@ impl CrabtermBuilder {
         }
         if let Some(path) = &self.rw_port_file {
             cmd.arg("--rw-port-file").arg(path);
+        }
+        if let Some(addr) = &self.bind_address {
+            cmd.arg("--bind-address").arg(addr);
+        }
+        if let Some(port) = self.device_monitor_port {
+            cmd.arg("--device-monitor-port").arg(port.to_string());
         }
 
         // Log file
@@ -335,6 +394,17 @@ impl CrabtermProcess {
     /// Get the path to the log file
     pub fn log_path(&self) -> &PathBuf {
         &self.log_file
+    }
+
+    /// Read stdout from the process (blocks until it is closed)
+    pub fn read_stdout(&mut self) -> String {
+        if let Some(mut stdout) = self.child.stdout.take() {
+            let mut output = String::new();
+            let _ = stdout.read_to_string(&mut output);
+            output
+        } else {
+            String::new()
+        }
     }
 
     /// Read stderr from the process (useful if it crashed)

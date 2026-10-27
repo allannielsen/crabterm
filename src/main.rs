@@ -47,7 +47,7 @@ fn log_format_console(
         record.args()
     )
 }
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::panic;
 use std::path::PathBuf;
 
@@ -68,6 +68,7 @@ use traits::{IoInstance, TOKEN_MONITOR_CLIENT_START};
 
 use iofilter::FilterChain;
 use keybind::KeybindConfig;
+use keybind::config::SettingValue;
 use term::disable_raw_mode;
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_SHA"), ")");
@@ -131,6 +132,13 @@ fn main() -> std::io::Result<()> {
                 .help("Path to config file (default: ~/.crabterm)")
                 .value_parser(clap::value_parser!(PathBuf))
                 .num_args(1),
+        )
+        .arg(
+            Arg::new("bind-address")
+                .long("bind-address")
+                .value_name("ADDR")
+                .help("IPv4 or IPv6 address the TCP servers listen on (default: 0.0.0.0)")
+                .value_parser(value_parser!(IpAddr)),
         )
         .arg(
             Arg::new("port")
@@ -303,6 +311,32 @@ fn main() -> std::io::Result<()> {
         .unwrap_or("MSG-%s: %t %m\r\n")
         .to_string();
 
+    let bind_addr = match matches.get_one::<IpAddr>("bind-address") {
+        Some(addr) => Ok(*addr),
+        None => match config.settings.get("bind-address") {
+            Some(SettingValue::String(s)) => s.parse::<IpAddr>().map_err(|_| s.clone()),
+            Some(SettingValue::Bool(b)) => Err(format!(
+                "{} (read as a boolean)",
+                if *b { "on" } else { "off" }
+            )),
+            None => Ok(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+        },
+    };
+    let bind_addr = match bind_addr {
+        Ok(addr) => addr,
+        Err(shown) => {
+            raw_print!(
+                "{}",
+                expand_template(
+                    &announce_template,
+                    "Local",
+                    &format!("Error: invalid bind-address in config: {}", shown)
+                )
+            );
+            std::process::exit(1);
+        }
+    };
+
     // Read-write server. --rw-port takes precedence over the legacy -p/--port
     // alias (they conflict, so at most one is set). A bind port of 0 means the
     // OS assigns a random port.
@@ -328,7 +362,7 @@ fn main() -> std::io::Result<()> {
     let mut server: Option<TcpServer> = None;
     let mut rw_config: Option<RwConfig> = None;
     if let Some(port) = rw_port {
-        let s = TcpServer::new(port)?;
+        let s = TcpServer::new(bind_addr, port)?;
         let actual_port = s.port()?;
         raw_print!(
             "{}",
@@ -340,6 +374,7 @@ fn main() -> std::io::Result<()> {
         );
         server = Some(s);
         rw_config = Some(RwConfig {
+            bind_addr,
             bind_port: port,
             port_file: rw_port_file,
         });
@@ -348,7 +383,7 @@ fn main() -> std::io::Result<()> {
     // Read-only "listen-in" server.
     let mut ro_server: Option<TcpServer> = None;
     if let Some(port) = matches.get_one::<u16>("ro-port") {
-        let s = TcpServer::new_ro(*port)?;
+        let s = TcpServer::new_ro(bind_addr, *port)?;
         let actual_port = s.port()?;
         raw_print!(
             "{}",
@@ -447,6 +482,7 @@ fn main() -> std::io::Result<()> {
             )
         );
         Some(DeviceMonitor::new(
+            bind_addr,
             port,
             monitor_template,
             TOKEN_MONITOR_CLIENT_START.0,

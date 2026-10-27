@@ -3,6 +3,7 @@ use crate::traits::IoInstance;
 use chrono::Local;
 use mio::{Poll, Token};
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorDirection {
@@ -37,9 +38,14 @@ pub struct DeviceMonitor {
 }
 
 impl DeviceMonitor {
-    pub fn new(port: u16, template: String, token_start: usize) -> std::io::Result<Self> {
+    pub fn new(
+        ip: IpAddr,
+        port: u16,
+        template: String,
+        token_start: usize,
+    ) -> std::io::Result<Self> {
         Ok(Self {
-            server: TcpServer::new(port)?,
+            server: TcpServer::new(ip, port)?,
             clients: HashMap::new(),
             template,
             current_direction: None,

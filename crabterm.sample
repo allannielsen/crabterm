@@ -36,6 +36,20 @@ map-prefix c filter-toggle charmap
 set announce-template "MSG-%s: %t %m\r\n"
 
 
+## Bind address ################################################################
+# IPv4 or IPv6 address that all TCP servers listen on (read-write, read-only
+# and device monitor). Default is 0.0.0.0 (all IPv4 interfaces). Use :: for
+# all IPv6 interfaces (on Linux also IPv4, unless net.ipv6.bindv6only is set).
+# --bind-address on the command line takes precedence.
+#
+# Examples:
+# set bind-address 127.0.0.1
+# set bind-address ::1
+# set bind-address ::
+
+# set bind-address 0.0.0.0
+
+
 ## Device Monitor ##############################################################
 # Configure a port to monitor all RX/TX data to/from the device.
 # All data is escaped: (\n\r\t\\ or \xHH)
