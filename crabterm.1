@@ -111,7 +111,10 @@ workflow.
 Graceful shutdown. The \fB\-\-rw\-port\-file\fR (if configured) is removed.
 .SH CONFIGURATION
 The configuration file (default \fB~/.crabterm\fR) controls keybindings, prefix
-keys, and filter settings. Lines starting with \fB#\fR are comments.
+keys, and filter settings. A \fB#\fR at the start of a line, or after
+whitespace outside a quoted string, starts a comment that runs to the end of
+the line. Quote setting values that contain a \fB#\fR after whitespace, for
+example \fBset device\-monitor\-template "%s: #%m\\n"\fR.
 .SS Directives
 .TP
 .BI "prefix " KEY

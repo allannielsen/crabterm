@@ -279,7 +279,12 @@ impl<'a> LineParser<'a> {
     }
 
     fn rest(&self) -> &'a str {
-        self.remaining.trim()
+        let s = self.remaining;
+        let end = s
+            .char_indices()
+            .find(|&(i, c)| c == '#' && (i == 0 || s[..i].ends_with(char::is_whitespace)))
+            .map_or(s.len(), |(i, _)| i);
+        s[..end].trim()
     }
 }
 
@@ -478,6 +483,96 @@ mod tests {
         assert_eq!(
             config.settings.get("other-setting"),
             Some(&SettingValue::String("value".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_setting_trailing_comment() {
+        let config = KeybindConfig::parse(
+            r#"
+            set timestamp-abs off  # show time-of-day time-stamp
+            set timestamp-rel on # show time since last line
+            set charmap-imap crlf,delbs	# tab before comment
+            set bind-address ::1 #
+            set announce-template "[#%s] %m" # quoted
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.settings.get("timestamp-abs"),
+            Some(&SettingValue::Bool(false))
+        );
+        assert_eq!(
+            config.settings.get("timestamp-rel"),
+            Some(&SettingValue::Bool(true))
+        );
+        assert_eq!(
+            config.settings.get("charmap-imap"),
+            Some(&SettingValue::String("crlf,delbs".to_string()))
+        );
+        assert_eq!(
+            config.settings.get("bind-address"),
+            Some(&SettingValue::String("::1".to_string()))
+        );
+        assert_eq!(
+            config.settings.get("announce-template"),
+            Some(&SettingValue::String("[#%s] %m".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_setting_hash_inside_value() {
+        let config = KeybindConfig::parse(
+            r#"
+            set other-setting a#b c#d
+            set cut-setting a #b
+            set quoted-setting "a #b"
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.settings.get("other-setting"),
+            Some(&SettingValue::String("a#b c#d".to_string()))
+        );
+        assert_eq!(
+            config.settings.get("cut-setting"),
+            Some(&SettingValue::String("a".to_string()))
+        );
+        assert_eq!(
+            config.settings.get("quoted-setting"),
+            Some(&SettingValue::String("a #b".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_setting_only_comment_is_missing_value() {
+        assert!(KeybindConfig::parse("set timestamp-abs # no value\n").is_err());
+    }
+
+    #[test]
+    fn test_parse_send_bytes_trailing_comment() {
+        let config = KeybindConfig::parse("map-prefix x send-bytes 0x1b 0x4f # ESC O\n").unwrap();
+        let key = parse_key_event("x").unwrap();
+
+        assert_eq!(
+            config.prefix_bindings.get(&key),
+            Some(&Action::Send(vec![0x1b, 0x4f]))
+        );
+    }
+
+    #[test]
+    fn test_parse_sample_config() {
+        let config = KeybindConfig::parse(include_str!("../../crabterm.sample")).unwrap();
+
+        assert_eq!(
+            config.settings.get("timestamp-abs"),
+            Some(&SettingValue::Bool(true))
+        );
+        assert_eq!(
+            config.settings.get("timestamp-rel"),
+            Some(&SettingValue::Bool(false))
         );
     }
 }
