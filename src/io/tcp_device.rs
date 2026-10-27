@@ -48,6 +48,7 @@ impl IoInstance for TcpDevice {
             }
             // Connection succeeded - re-register for READABLE only (not WRITABLE)
             poll.registry().reregister(s, token, Interest::READABLE)?;
+            let _ = s.set_nodelay(true);
             info!("{}: Connection verified", self.addr_as_string());
             self.connecting = false;
             return Ok(());

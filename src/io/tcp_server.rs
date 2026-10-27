@@ -50,6 +50,7 @@ impl TcpServer {
         match self.listener.accept() {
             Ok((stream, addr)) => {
                 info!("{}: New client connected", addr);
+                let _ = stream.set_nodelay(true);
                 let client = TcpClient {
                     stream,
                     addr,
