@@ -3,7 +3,7 @@ use log::{error, info};
 use mio::net::{TcpListener, TcpStream};
 use mio::{Interest, Poll, Token};
 use std::io::{ErrorKind, Read, Result, Write};
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr};
+use std::net::{IpAddr, Shutdown, SocketAddr};
 
 pub struct TcpServer {
     listener: TcpListener,
@@ -11,19 +11,19 @@ pub struct TcpServer {
 }
 
 impl TcpServer {
-    pub fn new(port: u16) -> Result<Self> {
-        Self::bind(port, false)
+    pub fn new(ip: IpAddr, port: u16) -> Result<Self> {
+        Self::bind(ip, port, false)
     }
 
     /// Create a read-only server. Clients accepted from it have their input
     /// drained and discarded (never forwarded to the device).
-    pub fn new_ro(port: u16) -> Result<Self> {
-        Self::bind(port, true)
+    pub fn new_ro(ip: IpAddr, port: u16) -> Result<Self> {
+        Self::bind(ip, port, true)
     }
 
-    fn bind(port: u16, read_only: bool) -> Result<Self> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
-        let listener = TcpListener::bind(addr)?;
+    fn bind(ip: IpAddr, port: u16, read_only: bool) -> Result<Self> {
+        let listener = TcpListener::bind(SocketAddr::new(ip, port))?;
+        info!("Listening on {}", listener.local_addr()?);
 
         Ok(TcpServer {
             listener,
@@ -50,6 +50,7 @@ impl TcpServer {
         match self.listener.accept() {
             Ok((stream, addr)) => {
                 info!("{}: New client connected", addr);
+                let _ = stream.set_nodelay(true);
                 let client = TcpClient {
                     stream,
                     addr,

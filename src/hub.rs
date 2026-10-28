@@ -5,6 +5,7 @@ use signal_hook::consts::signal::{SIGINT, SIGTERM, SIGUSR1};
 use signal_hook_mio::v1_0::Signals;
 use std::collections::HashMap;
 use std::io::{Result, Write};
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -18,6 +19,8 @@ use crate::traits::{
 
 /// Configuration for the read-write server that supports force-release.
 pub struct RwConfig {
+    /// The address the RW listener is bound to, also on re-bind.
+    pub bind_addr: IpAddr,
     /// The configured bind port. 0 means "OS-assigned random port"; on each
     /// force-release a new random port is obtained. A fixed port is re-bound
     /// as-is (still disconnecting all RW clients).
@@ -170,19 +173,23 @@ impl IoHub {
             return;
         }
 
-        let bind_port = self.rw_config.as_ref().map(|c| c.bind_port).unwrap_or(0);
+        let Some(cfg) = self.rw_config.as_ref() else {
+            error!("force_release: read-write server has no configuration, ignoring");
+            return;
+        };
+        let (bind_addr, bind_port) = (cfg.bind_addr, cfg.bind_port);
 
         // Bind the new listener first so a failure leaves the old one intact.
         // A random port (0) always yields a fresh free port. For a fixed port
         // the old listener still holds it, so we drop the old one first and
         // then rebind the same port.
-        let mut new_server = match TcpServer::new(bind_port) {
+        let mut new_server = match TcpServer::new(bind_addr, bind_port) {
             Ok(s) => s,
             Err(ref e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 if let Some(mut old) = self.server.take() {
                     let _ = old.deregister(&mut self.poll);
                 }
-                match TcpServer::new(bind_port) {
+                match TcpServer::new(bind_addr, bind_port) {
                     Ok(s) => s,
                     Err(e) => {
                         error!(

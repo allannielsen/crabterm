@@ -29,6 +29,15 @@ The literal string \fBecho\fR for echo mode (testing without hardware)
 .BR \-c ", " \-\-config " " \fICONFIG_PATH\fR
 Path to the configuration file. Default: \fB~/.crabterm\fR
 .TP
+.B \-\-bind\-address " " \fIADDR\fR
+IPv4 or IPv6 address that all TCP servers listen on: the read\-write server
+(including the listener re\-bound on force\-release), the read\-only server and
+the device monitor. Use \fB127.0.0.1\fR or \fB::1\fR to accept local clients
+only, or \fB::\fR for all IPv6 interfaces (on Linux also IPv4, unless
+\fBnet.ipv6.bindv6only\fR is set). Default: \fB0.0.0.0\fR (all IPv4
+interfaces). Can also be set with \fBset bind\-address\fR in the configuration
+file. The command line takes precedence.
+.TP
 .BR \-p ", " \-\-port " " \fIPORT\fR
 Open a read\-write TCP server and listen on the specified port. Allows remote
 clients to connect and interact with the device. This is an alias for
@@ -102,7 +111,10 @@ workflow.
 Graceful shutdown. The \fB\-\-rw\-port\-file\fR (if configured) is removed.
 .SH CONFIGURATION
 The configuration file (default \fB~/.crabterm\fR) controls keybindings, prefix
-keys, and filter settings. Lines starting with \fB#\fR are comments.
+keys, and filter settings. A \fB#\fR at the start of a line, or after
+whitespace outside a quoted string, starts a comment that runs to the end of
+the line. Quote setting values that contain a \fB#\fR after whitespace, for
+example \fBset device\-monitor\-template "%s: #%m\\n"\fR.
 .SS Directives
 .TP
 .BI "prefix " KEY
@@ -120,6 +132,7 @@ Example: \fBmap\-prefix t filter\-toggle timestamp\fR
 .BI "set " "NAME VALUE"
 Set a configuration option. VALUE can be \fBon\fR/\fBoff\fR for boolean
 settings, or a string for other settings.
+Example: \fBset bind\-address 127.0.0.1\fR
 .SS Key Syntax
 Keys are specified as modifier combinations plus a key name:
 .IP \(bu 2
@@ -232,6 +245,16 @@ port, and a port file for a reservation system:
 .RS
 .nf
 crabterm /dev/ttyUSB0 \-\-headless \\
+    \-\-rw\-port 0 \-\-rw\-port\-file /run/crabterm/rw.port \\
+    \-\-ro\-port 7000
+.fi
+.RE
+.PP
+The same, but only reachable from the local host:
+.PP
+.RS
+.nf
+crabterm /dev/ttyUSB0 \-\-headless \-\-bind\-address 127.0.0.1 \\
     \-\-rw\-port 0 \-\-rw\-port\-file /run/crabterm/rw.port \\
     \-\-ro\-port 7000
 .fi

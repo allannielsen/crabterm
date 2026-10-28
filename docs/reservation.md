@@ -155,6 +155,10 @@ kill -USR1 "$pid"           # RW client is disconnected, port rotates
   all RW clients — a plain "kick everyone off" that needs no port file.
 - **The port file requires an RW server.** Passing `--rw-port-file` without
   `--rw-port` (or `-p`) is an error.
+- **Bind address.** The RW and RO sockets listen on `0.0.0.0` by default.
+  `--bind-address` (for example `127.0.0.1` when the reservation system runs
+  on the same host) restricts both, and the RW listener re-bound on
+  force-release uses the same address.
 - **Headless.** `--headless` requires at least one of `--rw-port`/`-p` or
   `--ro-port`.
 - **Stability.** Force-release upholds the flow-control requirements in

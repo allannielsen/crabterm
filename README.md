@@ -48,7 +48,13 @@ crabterm echo
 
 # Headless mode (daemon, no local console)
 crabterm /dev/ttyUSB0 -p 4000 --headless
+
+# Only accept clients from the local host
+crabterm /dev/ttyUSB0 -p 4000 --bind-address 127.0.0.1
 ```
+
+All TCP servers listen on `0.0.0.0` by default. `--bind-address` (or
+`set bind-address` in the config file) selects another IPv4 or IPv6 address.
 
 ## Reservable server (reserve / release / listen-in)
 
